@@ -1,0 +1,180 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Purchase Register</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #f3f6fa;
+            color: #243447;
+            font-family: Arial, sans-serif;
+        }
+        main {
+            max-width: 1250px;
+            margin: auto;
+        }
+        .panel {
+            background: white;
+            padding: 22px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0000000d;
+        }
+        h1 { color: #315b73; }
+        input {
+            padding: 10px;
+            border: 1px solid #ccd5df;
+            border-radius: 6px;
+        }
+        button, .btn {
+            display: inline-block;
+            padding: 11px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #267092;
+            color: white;
+            text-decoration: none;
+            cursor: pointer;
+            margin: 5px 5px 5px 0;
+        }
+        .filters {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: end;
+        }
+        label { display: block; margin-bottom: 6px; font-weight: bold; }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        .value { font-size: 24px; font-weight: bold; margin-top: 8px; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 950px; }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #e5eaf0;
+            white-space: nowrap;
+        }
+        th { background: #315b73; color: white; }
+        .error { color: #a12626; background: #fff0f0; padding: 12px; }
+        @media(max-width:600px) {
+            body { padding: 10px; }
+            .panel { padding: 14px; }
+            .filters { display: block; }
+            .filters input { width: 100%; margin-bottom: 10px; }
+        }
+    </style>
+</head>
+<body>
+<main>
+
+    <section class="panel">
+        <h1>Purchase Register</h1>
+        <p>Posted raw-material purchases and supplier details.</p>
+
+        <form method="get" class="filters">
+            <div>
+                <label for="from_date">From Date</label>
+                <input type="date" id="from_date" name="from_date"
+                       value="{{ from_date }}">
+            </div>
+
+            <div>
+                <label for="to_date">To Date</label>
+                <input type="date" id="to_date" name="to_date"
+                       value="{{ to_date }}">
+            </div>
+
+            <button type="submit">Generate Report</button>
+            <a class="btn" href="{% url 'reporting:purchase_register_report' %}">
+                Clear Filters
+            </a>
+        </form>
+
+        {% for error in errors %}
+            <p class="error">{{ error }}</p>
+        {% endfor %}
+    </section>
+
+    <section class="cards">
+        <div class="panel">
+            Posted Purchases
+            <div class="value">{{ purchase_count }}</div>
+        </div>
+
+        <div class="panel">
+            Purchase Line Items
+            <div class="value">{{ line_count }}</div>
+        </div>
+
+        <div class="panel">
+            Total Purchase Value
+            <div class="value">₹{{ total_value|floatformat:2 }}</div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Purchase Register Details</h2>
+
+        <a class="btn"
+           href="{% url 'reporting:purchase_register_export_excel' %}?from_date={{ from_date|urlencode }}&to_date={{ to_date|urlencode }}">
+            Download Excel
+        </a>
+
+        <a class="btn"
+           href="{% url 'reporting:purchase_register_export_pdf' %}?from_date={{ from_date|urlencode }}&to_date={{ to_date|urlencode }}">
+            Download PDF
+        </a>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Purchase Date</th>
+                        <th>Purchase Number</th>
+                        <th>Supplier</th>
+                        <th>Supplier Invoice</th>
+                        <th>Raw Material</th>
+                        <th>SKU</th>
+                        <th>Quantity</th>
+                        <th>Unit</th>
+                        <th>Unit Cost</th>
+                        <th>Line Total</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td>{{ row.purchase_date|date:"d-m-Y" }}</td>
+                        <td>{{ row.purchase_number }}</td>
+                        <td>{{ row.supplier }}</td>
+                        <td>{{ row.supplier_invoice }}</td>
+                        <td>{{ row.material }}</td>
+                        <td>{{ row.sku }}</td>
+                        <td>{{ row.quantity|floatformat:3 }}</td>
+                        <td>{{ row.unit }}</td>
+                        <td>₹{{ row.unit_cost|floatformat:2 }}</td>
+                        <td>₹{{ row.line_total|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10">No posted purchases found for this period.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</main>
+</body>
+</html>

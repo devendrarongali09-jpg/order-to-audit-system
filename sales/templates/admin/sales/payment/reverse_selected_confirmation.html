@@ -1,0 +1,80 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+
+<div id="content-main">
+
+    <h1>Confirm Payment Reversal</h1>
+
+    <p>
+        You are about to reverse the following payments.
+        Original payment records will remain in the audit history.
+    </p>
+
+    <ul>
+        {% for payment in payments %}
+        <li>
+            Invoice: {{ payment.invoice.invoice_number }}
+            | Amount: ₹{{ payment.amount }}
+            | Status: {{ payment.get_status_display }}
+        </li>
+        {% endfor %}
+    </ul>
+
+    {% if error_message %}
+        <p class="errornote">{{ error_message }}</p>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+
+        {% for payment in payments %}
+        <input
+            type="hidden"
+            name="{{ action_checkbox_name }}"
+            value="{{ payment.pk }}"
+        >
+        {% endfor %}
+
+        <input type="hidden" name="action"
+               value="{{ action_name }}">
+
+        <input type="hidden" name="index"
+               value="{{ action_index }}">
+
+        <input type="hidden" name="select_across"
+               value="0">
+
+        <p>
+            <label for="id_reversal_reason">
+                Reason for reversal:
+            </label>
+        </p>
+
+        <textarea
+            id="id_reversal_reason"
+            name="reversal_reason"
+            rows="4"
+            required
+            style="width: 100%; max-width: 600px;"
+        >{{ reversal_reason }}</textarea>
+
+        <p>
+            <button
+                type="submit"
+                name="_confirm"
+                value="yes"
+                class="default"
+            >
+                Confirm Reversal
+            </button>
+
+            <a href="{{ changelist_url }}" class="button">
+                Cancel
+            </a>
+        </p>
+    </form>
+
+</div>
+
+{% endblock %}

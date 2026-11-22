@@ -1,4 +1,7 @@
-
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+from django.core.exceptions import PermissionDenied
+from django.http import HttpResponseRedirect
+from django.template.response import TemplateResponse
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.urls import reverse
@@ -24,6 +27,8 @@ from .services import (
     approve_order,
     generate_invoice,
     post_dispatch,
+    record_payment,
+    reverse_payment,
 )
 
 
@@ -100,10 +105,73 @@ class SalesOrderAdmin(admin.ModelAdmin):
         "approve_selected_orders",
         "generate_selected_invoices",
     ]
+    def _is_salesman(self, request):
+        if request.user.is_superuser:
+            return False
+
+        is_salesman = request.user.groups.filter(
+            name="Salesman"
+        ).exists()
+
+        has_broader_role = request.user.groups.filter(
+            name__in=(
+                "Factory Admin",
+                "Owner",
+            )
+        ).exists()
+
+        return is_salesman and not has_broader_role
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+
+        if self._is_salesman(request):
+            queryset = queryset.filter(
+                created_by=request.user
+            )
+
+        return queryset
+
+    def has_view_permission(self, request, obj=None):
+        allowed = super().has_view_permission(request, obj)
+
+        if not allowed:
+            return False
+
+        if obj is not None and self._is_salesman(request):
+            return obj.created_by_id == request.user.pk
+
+        return True
+
+    def has_change_permission(self, request, obj=None):
+        allowed = super().has_change_permission(request, obj)
+
+        if not allowed:
+            return False
+
+        if obj is not None and self._is_salesman(request):
+            return (
+                obj.created_by_id == request.user.pk
+                and obj.status == SalesOrder.Status.DRAFT
+            )
+
+        return True
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+
+        if self._is_salesman(request):
+            actions.pop("approve_selected_orders", None)
+            actions.pop("generate_selected_invoices", None)
+
+        return actions
 
     def save_model(self, request, obj, form, change):
 
-        if not change and not obj.created_by_id:
+        if self._is_salesman(request) and not change:
+            obj.created_by = request.user
+
+        elif not change and not obj.created_by_id:
             obj.created_by = request.user
 
         super().save_model(request, obj, form, change)
@@ -335,6 +403,12 @@ class PaymentAdmin(admin.ModelAdmin):
 
     form = PaymentAdminForm
 
+    actions = ["reverse_selected_payments"]
+
+    reversal_confirmation_template = (
+        "admin/sales/payment/reverse_selected_confirmation.html"
+    )
+
     list_display = (
         "invoice",
         "payment_date",
@@ -342,6 +416,8 @@ class PaymentAdmin(admin.ModelAdmin):
         "method",
         "status",
         "received_by",
+        "reversed_by",
+        "reversed_at",
     )
 
     list_filter = (
@@ -365,13 +441,125 @@ class PaymentAdmin(admin.ModelAdmin):
         "status",
         "received_by",
         "created_at",
+        "reversed_at",
+        "reversed_by",
+        "reversal_reason",
     )
 
     readonly_fields = (
         "status",
         "received_by",
         "created_at",
+        "reversed_at",
+        "reversed_by",
+        "reversal_reason",
     )
+
+    def _can_reverse_payments(self, request):
+        return (
+            request.user.is_superuser
+            or request.user.groups.filter(
+                name="Owner"
+            ).exists()
+        )
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+
+        if not self._can_reverse_payments(request):
+            actions.pop("reverse_selected_payments", None)
+
+        return actions
+
+    def _render_reversal_confirmation(
+        self,
+        request,
+        queryset,
+        error_message=None,
+    ):
+        payments = list(
+            queryset.select_related("invoice")
+        )
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Confirm payment reversal",
+            "payments": payments,
+            "action_name": "reverse_selected_payments",
+            "action_index": request.POST.get("index", "0"),
+            "action_checkbox_name": ACTION_CHECKBOX_NAME,
+            "reversal_reason": request.POST.get(
+                "reversal_reason", ""
+            ),
+            "error_message": error_message,
+            "changelist_url": reverse(
+                "admin:sales_payment_changelist"
+            ),
+        }
+
+        return TemplateResponse(
+            request,
+            self.reversal_confirmation_template,
+            context,
+        )
+
+    @admin.action(
+        description="Reverse selected payments",
+        permissions=["view"],
+    )
+    def reverse_selected_payments(self, request, queryset):
+
+        if not self._can_reverse_payments(request):
+            raise PermissionDenied(
+                "Only the Owner can reverse payments."
+            )
+
+        if "_confirm" not in request.POST:
+            return self._render_reversal_confirmation(
+                request,
+                queryset,
+            )
+
+        reason = request.POST.get(
+            "reversal_reason", ""
+        ).strip()
+
+        if not reason:
+            return self._render_reversal_confirmation(
+                request,
+                queryset,
+                error_message="A reversal reason is required.",
+            )
+
+        for payment in queryset:
+            try:
+                reversed_payment = reverse_payment(
+                    payment_id=payment.pk,
+                    user=request.user,
+                    reason=reason,
+                )
+
+            except ValidationError as exc:
+                self.message_user(
+                    request,
+                    f"{payment.invoice.invoice_number}: "
+                    f"{'; '.join(exc.messages)}",
+                    level=messages.ERROR,
+                )
+
+            else:
+                self.message_user(
+                    request,
+                    f"Payment of ₹{reversed_payment.amount} "
+                    f"for {payment.invoice.invoice_number} "
+                    f"reversed successfully.",
+                    level=messages.SUCCESS,
+                )
+
+        return HttpResponseRedirect(
+            reverse("admin:sales_payment_changelist")
+        )
 
     def save_model(self, request, obj, form, change):
 
@@ -400,7 +588,6 @@ class PaymentAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
-
 class DispatchItemInline(admin.TabularInline):
 
     model = DispatchItem

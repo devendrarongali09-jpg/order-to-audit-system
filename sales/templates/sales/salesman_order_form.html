@@ -1,0 +1,209 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Sales Order</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: #f3f6fa;
+            color: #243447;
+            font-family: Arial, sans-serif;
+        }
+        header {
+            background: #234b64;
+            color: white;
+            padding: 20px;
+        }
+        main { max-width: 850px; margin: auto; padding: 20px; }
+        .panel {
+            background: white;
+            padding: 22px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0000000d;
+        }
+        label { display: block; margin: 12px 0 6px; font-weight: bold; }
+        select, input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccd5df;
+            border-radius: 7px;
+            font-size: 15px;
+        }
+        .row {
+            display: grid;
+            grid-template-columns: 2fr 1fr auto;
+            gap: 12px;
+            align-items: end;
+            padding: 12px 0;
+            border-bottom: 1px solid #e8edf2;
+        }
+        button, .btn {
+            padding: 12px 17px;
+            border: 0;
+            border-radius: 7px;
+            cursor: pointer;
+            background: #176b87;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+        }
+        .remove { background: #a43f3f; }
+        .submit { background: #187747; width: 100%; margin-top: 18px; }
+        .total { font-size: 21px; font-weight: bold; margin-top: 20px; }
+        .messages { background: #fff1dc; padding: 12px; border-radius: 7px; }
+        .back { display: inline-block; margin-bottom: 15px; }
+        @media(max-width:600px) {
+            main { padding: 12px; }
+            .panel { padding: 15px; }
+            .row { grid-template-columns: 1fr 90px auto; gap: 7px; }
+            select, input { padding: 10px 7px; font-size: 13px; }
+            button { padding: 10px; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>Create Sales Order</h2>
+    <p>Salesman: {{ request.user.username }}</p>
+</header>
+
+<main>
+    <a href="{% url 'sales:salesman_dashboard' %}" class="btn back">
+        ← Back to Dashboard
+    </a>
+
+    {% for message in messages %}
+        <div class="messages">{{ message }}</div>
+    {% endfor %}
+
+    <section class="panel">
+        <form method="post">
+            {% csrf_token %}
+
+            <label for="customer">Select Customer</label>
+            <select name="customer_id" id="customer" required>
+                <option value="">Choose customer</option>
+                {% for customer in customers %}
+                    <option value="{{ customer.pk }}">
+                        {{ customer.name }} ({{ customer.get_customer_type_display }})
+                    </option>
+                {% endfor %}
+            </select>
+
+            <h3>Products and Quantities</h3>
+
+            <div id="product-rows">
+                <div class="row product-row">
+                    <div>
+                        <label>Product</label>
+                        <select name="product_id" class="product-select" required>
+                            <option value="">Select product</option>
+                            {% for item in product_options %}
+                                <option
+                                    value="{{ item.product.pk }}"
+                                    data-price="{{ item.product.selling_price }}"
+                                    data-stock="{{ item.available_stock }}"
+                                >
+                                    {{ item.product.name }} — ₹{{ item.product.selling_price }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <small class="stock-label">Available stock: —</small>
+                    </div>
+
+                    <div>
+                        <label>Quantity</label>
+                        <input type="number" name="quantity" min="1" value="1" required>
+                    </div>
+
+                    <div>
+                        <button type="button" class="remove remove-row">Remove</button>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" id="add-row">+ Add Product</button>
+
+            <label for="notes">Notes (Optional)</label>
+            <textarea name="notes" id="notes" rows="3"
+                      placeholder="Add delivery instructions or notes"></textarea>
+
+            <div class="total">
+                Estimated Order Total: ₹<span id="total">0.00</span>
+            </div>
+
+            <p style="color:#667;font-size:13px;">
+                Stock availability is checked again when the factory processes the order.
+            </p>
+
+            <button type="submit" class="submit">
+                Submit Order to Factory
+            </button>
+        </form>
+    </section>
+</main>
+
+<script>
+    const rows = document.getElementById("product-rows");
+    const totalElement = document.getElementById("total");
+
+    function updateTotal() {
+        let total = 0;
+
+        rows.querySelectorAll(".product-row").forEach(row => {
+            const select = row.querySelector(".product-select");
+            const quantityInput = row.querySelector('input[name="quantity"]');
+            const option = select.selectedOptions[0];
+
+            const price = Number(option?.dataset.price || 0);
+            const quantity = Number(quantityInput.value || 0);
+
+            total += price * quantity;
+
+            row.querySelector(".stock-label").textContent =
+                option?.value
+                    ? "Available stock: " + option.dataset.stock
+                    : "Available stock: —";
+        });
+
+        totalElement.textContent = total.toFixed(2);
+    }
+
+    function addRow() {
+        const firstRow = rows.querySelector(".product-row");
+        const newRow = firstRow.cloneNode(true);
+
+        newRow.querySelector(".product-select").selectedIndex = 0;
+        newRow.querySelector('input[name="quantity"]').value = 1;
+        newRow.querySelector(".stock-label").textContent = "Available stock: —";
+
+        rows.appendChild(newRow);
+        updateTotal();
+    }
+
+    document.getElementById("add-row").addEventListener("click", addRow);
+
+    rows.addEventListener("click", event => {
+        if (event.target.classList.contains("remove-row")) {
+            const allRows = rows.querySelectorAll(".product-row");
+
+            if (allRows.length > 1) {
+                event.target.closest(".product-row").remove();
+                updateTotal();
+            }
+        }
+    });
+
+    rows.addEventListener("change", updateTotal);
+    rows.addEventListener("input", updateTotal);
+
+    updateTotal();
+</script>
+
+</body>
+</html>

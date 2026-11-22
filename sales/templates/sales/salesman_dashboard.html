@@ -1,0 +1,151 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salesman Portal</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f3f6fa;
+            color: #243447;
+        }
+        header {
+            background: #234b64;
+            color: white;
+            padding: 22px;
+        }
+        main { max-width: 1050px; margin: auto; padding: 22px; }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .card, .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0000000d;
+        }
+        .value { font-size: 25px; font-weight: bold; margin-top: 8px; }
+        .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn {
+            display: inline-block;
+            padding: 12px 18px;
+            border-radius: 8px;
+            text-decoration: none;
+            background: #176b87;
+            color: white;
+            font-weight: bold;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #e5eaf0;
+            text-align: left;
+        }
+        th { background: #f5f8fb; }
+        .table-wrap { overflow-x: auto; }
+        .status { font-weight: bold; color: #176b87; }
+        .message {
+            padding: 12px;
+            margin-bottom: 10px;
+            background: #e5f5e9;
+            border-radius: 7px;
+        }
+        @media(max-width: 600px) {
+            main { padding: 13px; }
+            header { padding: 17px; }
+            th, td { padding: 9px; font-size: 13px; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>Salesman Portal</h2>
+    <p>Welcome, {{ request.user.username }}</p>
+</header>
+
+<main>
+
+    {% for message in messages %}
+        <div class="message">{{ message }}</div>
+    {% endfor %}
+
+    <div class="actions">
+        <a class="btn" href="{% url 'sales:salesman_new_order' %}">
+            + Create New Order
+        </a>
+    </div>
+
+    <div class="cards">
+        <div class="card">
+            Total Orders
+            <div class="value">{{ order_count }}</div>
+        </div>
+
+        <div class="card">
+            Total Order Value
+            <div class="value">₹{{ total_order_value|floatformat:2 }}</div>
+        </div>
+    </div>
+
+    <section class="panel">
+        <h3>Customer-wise Sales</h3>
+
+        {% for customer in customer_sales %}
+            <p>
+                <strong>{{ customer.name }}</strong>
+                — ₹{{ customer.total|floatformat:2 }}
+            </p>
+        {% empty %}
+            <p>No customer sales recorded yet.</p>
+        {% endfor %}
+    </section>
+
+    <section class="panel" style="margin-top:20px;">
+        <h3>My Orders</h3>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order Number</th>
+                        <th>Customer</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td>{{ order.order_number }}</td>
+                        <td>{{ order.customer.name }}</td>
+                        <td>{{ order.order_date|date:"d-m-Y" }}</td>
+                        <td class="status">{{ order.get_status_display }}</td>
+                        <td>₹{{ order.total_amount|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5">You have not created any orders yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <p style="margin-top:24px;color:#667;">
+        Order-to-Audit Management System
+    </p>
+
+</main>
+</body>
+</html>

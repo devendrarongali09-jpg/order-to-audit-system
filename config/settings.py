@@ -226,6 +226,6 @@ DEFAULT_FROM_EMAIL = os.getenv(
 
 LOGIN_URL = "/accounts/login/"
 
-LOGIN_REDIRECT_URL = "/reports/management-dashboard/"
+LOGIN_REDIRECT_URL = "/admin/"
 
 LOGOUT_REDIRECT_URL = "/accounts/login/"

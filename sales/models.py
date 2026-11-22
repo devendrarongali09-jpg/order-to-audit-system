@@ -395,10 +395,24 @@ class Payment(models.Model):
         related_name="received_payments"
     )
 
+    reversed_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    reversed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reversed_payments"
+    )
+
+    reversal_reason = models.TextField(blank=True)
+
     created_at = models.DateTimeField(
         auto_now_add=True
     )
-
     class Meta:
         ordering = ["-payment_date", "-id"]
 

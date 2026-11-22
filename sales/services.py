@@ -1,7 +1,7 @@
 
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -397,6 +397,70 @@ def record_payment(
         notes=notes,
         received_by=user,
         status=Payment.Status.RECEIVED,
+    )
+
+    return payment
+@transaction.atomic
+def reverse_payment(*, payment_id, user, reason):
+    """
+    Reverse a received payment without deleting its audit record.
+
+    Only Owner-group users and superusers may reverse payments.
+    """
+
+    if not user or not user.is_authenticated:
+        raise PermissionDenied(
+            "Authentication is required to reverse payments."
+        )
+
+    is_owner = (
+        user.is_superuser
+        or user.groups.filter(name="Owner").exists()
+    )
+
+    if not is_owner:
+        raise PermissionDenied(
+            "Only the Owner can reverse payments."
+        )
+
+    reason = (reason or "").strip()
+
+    if not reason:
+        raise ValidationError(
+            "A reason is required to reverse a payment."
+        )
+
+    # Read the invoice reference, then lock the invoice first.
+    payment_reference = Payment.objects.only("invoice_id").get(
+        pk=payment_id
+    )
+
+    Invoice.objects.select_for_update().get(
+        pk=payment_reference.invoice_id
+    )
+
+    # Lock and retrieve the payment.
+    payment = Payment.objects.select_for_update().get(
+        pk=payment_id
+    )
+
+    if payment.status != Payment.Status.RECEIVED:
+        raise ValidationError(
+            "Only received payments can be reversed."
+        )
+
+    payment.status = Payment.Status.REVERSED
+    payment.reversed_at = timezone.now()
+    payment.reversed_by = user
+    payment.reversal_reason = reason
+
+    payment.save(
+        update_fields=[
+            "status",
+            "reversed_at",
+            "reversed_by",
+            "reversal_reason",
+        ]
     )
 
     return payment

@@ -70,4 +70,38 @@ path(
     views.management_dashboard,
     name="management_dashboard",
 ),
+path(
+    "purchase-register/",
+    views.purchase_register_report,
+    name="purchase_register_report",
+),
+
+path(
+    "purchase-register/export/excel/",
+    views.purchase_register_export_excel,
+    name="purchase_register_export_excel",
+),
+
+path(
+    "purchase-register/export/pdf/",
+    views.purchase_register_export_pdf,
+    name="purchase_register_export_pdf",
+),
+path(
+    "gst-outward/",
+    views.gst_outward_report,
+    name="gst_outward_report",
+),
+
+path(
+    "gst-outward/export/excel/",
+    views.gst_outward_export_excel,
+    name="gst_outward_export_excel",
+),
+
+path(
+    "gst-outward/export/pdf/",
+    views.gst_outward_export_pdf,
+    name="gst_outward_export_pdf",
+),
 ]

@@ -1,0 +1,295 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GST Outward Supply Summary</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #f3f6fa;
+            color: #243447;
+            font-family: Arial, sans-serif;
+        }
+
+        main {
+            max-width: 1300px;
+            margin: auto;
+        }
+
+        .panel {
+            background: white;
+            padding: 22px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0000000d;
+        }
+
+        h1 { color: #315b73; }
+
+        .filters {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: end;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+
+        input {
+            padding: 10px;
+            border: 1px solid #ccd5df;
+            border-radius: 6px;
+        }
+
+        button, .btn {
+            display: inline-block;
+            padding: 11px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #267092;
+            color: white;
+            text-decoration: none;
+            cursor: pointer;
+            margin: 5px 5px 5px 0;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+
+        .value {
+            font-size: 23px;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
+        .table-wrap { overflow-x: auto; }
+
+        table {
+            width: 100%;
+            min-width: 950px;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #e5eaf0;
+            white-space: nowrap;
+        }
+
+        th {
+            background: #315b73;
+            color: white;
+        }
+
+        .error {
+            color: #a12626;
+            background: #fff0f0;
+            padding: 12px;
+            border-radius: 6px;
+        }
+
+        .muted {
+            color: #68798a;
+            font-size: 13px;
+        }
+
+        @media(max-width: 600px) {
+            body { padding: 10px; }
+            .panel { padding: 14px; }
+            .filters { display: block; }
+            .filters input {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+<main>
+
+    <section class="panel">
+        <h1>GST Outward Supply Summary</h1>
+        <p>Invoice-wise taxable value and GST reconciliation.</p>
+
+        <form method="get" class="filters">
+            <div>
+                <label for="from_date">From Date</label>
+                <input type="date" id="from_date"
+                       name="from_date" value="{{ from_date }}">
+            </div>
+
+            <div>
+                <label for="to_date">To Date</label>
+                <input type="date" id="to_date"
+                       name="to_date" value="{{ to_date }}">
+            </div>
+
+            <button type="submit">Generate Report</button>
+
+            <a class="btn"
+               href="{% url 'reporting:gst_outward_report' %}">
+                Clear Filters
+            </a>
+        </form>
+
+        {% for error in errors %}
+            <p class="error">{{ error }}</p>
+        {% endfor %}
+    </section>
+
+    <section class="cards">
+        <div class="panel">
+            Issued Invoices
+            <div class="value">{{ invoice_count }}</div>
+        </div>
+
+        <div class="panel">
+            Taxable Value
+            <div class="value">₹{{ totals.taxable_value|floatformat:2 }}</div>
+        </div>
+
+        <div class="panel">
+            Total GST
+            <div class="value">₹{{ totals.total_gst|floatformat:2 }}</div>
+        </div>
+
+        <div class="panel">
+            Grand Total
+            <div class="value">₹{{ totals.grand_total|floatformat:2 }}</div>
+        </div>
+    </section>
+
+    <section class="cards">
+        <div class="panel">
+            CGST
+            <div class="value">₹{{ totals.cgst|floatformat:2 }}</div>
+        </div>
+
+        <div class="panel">
+            SGST
+            <div class="value">₹{{ totals.sgst|floatformat:2 }}</div>
+        </div>
+
+        <div class="panel">
+            IGST
+            <div class="value">₹{{ totals.igst|floatformat:2 }}</div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Invoice Register</h2>
+
+        <a class="btn"
+           href="{% url 'reporting:gst_outward_export_excel' %}?from_date={{ from_date|urlencode }}&to_date={{ to_date|urlencode }}">
+            Download Excel
+        </a>
+
+        <a class="btn"
+           href="{% url 'reporting:gst_outward_export_pdf' %}?from_date={{ from_date|urlencode }}&to_date={{ to_date|urlencode }}">
+            Download PDF
+        </a>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Invoice Date</th>
+                        <th>Invoice Number</th>
+                        <th>Customer</th>
+                        <th>Customer GSTIN</th>
+                        <th>Place of Supply</th>
+                        <th>Taxable Value</th>
+                        <th>CGST</th>
+                        <th>SGST</th>
+                        <th>IGST</th>
+                        <th>Grand Total</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for row in invoice_rows %}
+                    <tr>
+                        <td>{{ row.invoice_date|date:"d-m-Y" }}</td>
+                        <td>{{ row.invoice_number }}</td>
+                        <td>{{ row.customer_name }}</td>
+                        <td>{{ row.customer_gstin }}</td>
+                        <td>{{ row.place_of_supply }}</td>
+                        <td>₹{{ row.taxable_value|floatformat:2 }}</td>
+                        <td>₹{{ row.cgst|floatformat:2 }}</td>
+                        <td>₹{{ row.sgst|floatformat:2 }}</td>
+                        <td>₹{{ row.igst|floatformat:2 }}</td>
+                        <td>₹{{ row.grand_total|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10">No issued invoices found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>HSN-wise Invoice Details</h2>
+        <p class="muted">Product and tax-rate details from invoice lines.</p>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Invoice</th>
+                        <th>Customer</th>
+                        <th>HSN</th>
+                        <th>Product</th>
+                        <th>Quantity</th>
+                        <th>GST Rate</th>
+                        <th>Taxable Value</th>
+                        <th>CGST</th>
+                        <th>SGST</th>
+                        <th>IGST</th>
+                        <th>Line Total</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for row in line_rows %}
+                    <tr>
+                        <td>{{ row.invoice_number }}</td>
+                        <td>{{ row.customer_name }}</td>
+                        <td>{{ row.hsn_code }}</td>
+                        <td>{{ row.product_name }}</td>
+                        <td>{{ row.quantity }}</td>
+                        <td>{{ row.gst_rate|floatformat:2 }}%</td>
+                        <td>₹{{ row.taxable_value|floatformat:2 }}</td>
+                        <td>₹{{ row.cgst|floatformat:2 }}</td>
+                        <td>₹{{ row.sgst|floatformat:2 }}</td>
+                        <td>₹{{ row.igst|floatformat:2 }}</td>
+                        <td>₹{{ row.total_amount|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="11">No invoice line details found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</main>
+</body>
+</html>

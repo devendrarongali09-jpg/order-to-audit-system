@@ -1,11 +1,11 @@
 
-from django.contrib.auth.decorators import login_required
+from accounts.decorators import group_required
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
 from django.db.models import Sum, Q
 from django.http import HttpResponseBadRequest
 
-from inventory.models import StockMovement
+from inventory.models import StockMovement, Purchase
 from inventory.services import INCOMING_TYPES, OUTGOING_TYPES
 from masterdata.models import Product, RawMaterial, Customer
 from decimal import Decimal
@@ -61,7 +61,12 @@ OUTGOING_TYPES = {
 }
 
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+)
 def stock_movement_report(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -182,13 +187,17 @@ def stock_movement_report(request):
                 movement.unit.symbol
             )
 
-            if movement.movement_type in INCOMING_TYPES:
+            if movement.movement_type == StockMovement.MovementType.OPENING_IN:
 
-                summary["incoming"] += movement.quantity
+             summary["opening"] += movement.quantity
+
+            elif movement.movement_type in INCOMING_TYPES:
+
+             summary["incoming"] += movement.quantity
 
             elif movement.movement_type in OUTGOING_TYPES:
 
-                summary["outgoing"] += movement.quantity
+             summary["outgoing"] += movement.quantity
 
         # Calculate closing balance.
         for summary in summaries.values():
@@ -219,7 +228,12 @@ def stock_movement_report(request):
         context,
     )
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+)
 def stock_movement_export_excel(request):
 
     # Read the same filters used by the stock report.
@@ -319,11 +333,17 @@ def stock_movement_export_excel(request):
             movement.unit.symbol
         )
 
-        if movement.movement_type in INCOMING_TYPES:
-            summary["incoming"] += movement.quantity
+        if movement.movement_type == StockMovement.MovementType.OPENING_IN:
+
+         summary["opening"] += movement.quantity
+
+        elif movement.movement_type in INCOMING_TYPES:
+
+         summary["incoming"] += movement.quantity
 
         elif movement.movement_type in OUTGOING_TYPES:
-            summary["outgoing"] += movement.quantity
+
+         summary["outgoing"] += movement.quantity
 
     # Calculate closing balances.
     for summary in summaries.values():
@@ -542,9 +562,13 @@ def stock_movement_export_excel(request):
 
     return response
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+)
 def stock_movement_export_pdf(request):
-
     raw_from = request.GET.get("from_date", "").strip()
     raw_to = request.GET.get("to_date", "").strip()
     raw_product = request.GET.get("product", "").strip()
@@ -636,11 +660,17 @@ def stock_movement_export_pdf(request):
 
         summary["units"].add(movement.unit.symbol)
 
-        if movement.movement_type in INCOMING_TYPES:
-            summary["incoming"] += movement.quantity
+        if movement.movement_type == StockMovement.MovementType.OPENING_IN:
+
+         summary["opening"] += movement.quantity
+
+        elif movement.movement_type in INCOMING_TYPES:
+
+         summary["incoming"] += movement.quantity
 
         elif movement.movement_type in OUTGOING_TYPES:
-            summary["outgoing"] += movement.quantity
+
+         summary["outgoing"] += movement.quantity
 
     for summary in summaries.values():
 
@@ -848,7 +878,12 @@ def stock_movement_export_pdf(request):
 
     return response
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+    )
 def raw_material_movement_report(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -955,13 +990,17 @@ def raw_material_movement_report(request):
 
             summary = summaries[movement.raw_material_id]
 
-            if movement.movement_type in INCOMING_TYPES:
+        if movement.movement_type == StockMovement.MovementType.OPENING_IN:
 
-                summary["incoming"] += movement.quantity
+         summary["opening"] += movement.quantity
 
-            elif movement.movement_type in OUTGOING_TYPES:
+        elif movement.movement_type in INCOMING_TYPES:
 
-                summary["outgoing"] += movement.quantity
+         summary["incoming"] += movement.quantity
+
+        elif movement.movement_type in OUTGOING_TYPES:
+
+         summary["outgoing"] += movement.quantity
 
         # Calculate closing stock.
         for summary in summaries.values():
@@ -988,7 +1027,12 @@ def raw_material_movement_report(request):
         context,
     )
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+)
 def raw_material_export_excel(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -1075,11 +1119,17 @@ def raw_material_export_excel(request):
 
         summary = summaries[movement.raw_material_id]
 
-        if movement.movement_type in INCOMING_TYPES:
-            summary["incoming"] += movement.quantity
+        if movement.movement_type == StockMovement.MovementType.OPENING_IN:
+
+         summary["opening"] += movement.quantity
+
+        elif movement.movement_type in INCOMING_TYPES:
+
+         summary["incoming"] += movement.quantity
 
         elif movement.movement_type in OUTGOING_TYPES:
-            summary["outgoing"] += movement.quantity
+
+         summary["outgoing"] += movement.quantity
 
     # Calculate closing stock.
     for summary in summaries.values():
@@ -1306,7 +1356,12 @@ def raw_material_export_excel(request):
 
     return response
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+)
 def raw_material_export_pdf(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -1397,11 +1452,17 @@ def raw_material_export_pdf(request):
 
         summary = summaries[movement.raw_material_id]
 
-        if movement.movement_type in INCOMING_TYPES:
-            summary["incoming"] += movement.quantity
+        if movement.movement_type == StockMovement.MovementType.OPENING_IN:
+
+                 summary["opening"] += movement.quantity
+
+        elif movement.movement_type in INCOMING_TYPES:
+
+                 summary["incoming"] += movement.quantity
 
         elif movement.movement_type in OUTGOING_TYPES:
-            summary["outgoing"] += movement.quantity
+
+                 summary["outgoing"] += movement.quantity
 
     # Calculate closing stock.
     for summary in summaries.values():
@@ -1743,7 +1804,11 @@ def raw_material_export_pdf(request):
 
     return response
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Accountant/Auditor",
+    "Owner",
+)
 def sales_audit_report(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -1991,7 +2056,11 @@ def sales_audit_report(request):
         context,
     )
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Accountant/Auditor",
+    "Owner",
+)
 def sales_audit_export_excel(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -2487,7 +2556,11 @@ def sales_audit_export_excel(request):
 
     return response
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Accountant/Auditor",
+    "Owner",
+)
 def sales_audit_export_pdf(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -3101,7 +3174,12 @@ def sales_audit_export_pdf(request):
 
     return response
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+)
 def production_audit_report(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -3319,7 +3397,12 @@ def production_audit_report(request):
         context,
     )
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+)
 def production_audit_export_excel(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -3862,7 +3945,12 @@ def production_audit_export_excel(request):
 
     return response
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Production Supervisor",
+    "Accountant/Auditor",
+    "Owner",
+)
 def production_audit_export_pdf(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -4482,7 +4570,11 @@ def production_audit_export_pdf(request):
 
     return response
 
-@login_required
+@group_required(
+    "Factory Admin",
+    "Accountant/Auditor",
+    "Owner",
+)
 def management_dashboard(request):
 
     raw_from = request.GET.get("from_date", "").strip()
@@ -4881,3 +4973,702 @@ def management_dashboard(request):
         "reporting/management_dashboard.html",
         context,
     )
+
+def _purchase_register_data(request):
+    """Return posted purchases and their line-item details."""
+
+    raw_from = request.GET.get("from_date", "").strip()
+    raw_to = request.GET.get("to_date", "").strip()
+
+    start_date = parse_date(raw_from) if raw_from else None
+    end_date = parse_date(raw_to) if raw_to else None
+
+    errors = []
+
+    if raw_from and start_date is None:
+        errors.append("Invalid starting date.")
+
+    if raw_to and end_date is None:
+        errors.append("Invalid ending date.")
+
+    if start_date and end_date and end_date < start_date:
+        errors.append("Ending date cannot be before starting date.")
+
+    if errors:
+        return {"errors": errors}, False
+
+    queryset = (
+        Purchase.objects
+        .filter(status=Purchase.Status.POSTED)
+        .select_related("supplier")
+        .prefetch_related("items__raw_material__unit")
+        .order_by("purchase_date", "purchase_number")
+    )
+
+    if start_date:
+        queryset = queryset.filter(purchase_date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(purchase_date__lte=end_date)
+
+    purchases = list(queryset)
+
+    rows = []
+
+    total_value = Decimal("0.00")
+
+    for purchase in purchases:
+
+        total_value += purchase.total_amount
+
+        for item in purchase.items.all():
+
+            rows.append({
+                "purchase_date": purchase.purchase_date,
+                "purchase_number": purchase.purchase_number,
+                "supplier": purchase.supplier.name,
+                "supplier_invoice": (
+                    purchase.supplier_invoice_number or "-"
+                ),
+                "material": item.raw_material.name,
+                "sku": item.raw_material.sku,
+                "quantity": item.quantity,
+                "unit": item.raw_material.unit.symbol,
+                "unit_cost": item.unit_cost,
+                "line_total": item.line_total,
+            })
+
+    return {
+        "errors": [],
+        "rows": rows,
+        "purchases": purchases,
+        "purchase_count": len(purchases),
+        "line_count": len(rows),
+        "total_value": total_value,
+        "from_date": raw_from,
+        "to_date": raw_to,
+    }, True
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def purchase_register_report(request):
+
+    data, valid = _purchase_register_data(request)
+
+    if not valid:
+        data.update({
+            "rows": [],
+            "purchase_count": 0,
+            "line_count": 0,
+            "total_value": Decimal("0.00"),
+            "from_date": request.GET.get("from_date", ""),
+            "to_date": request.GET.get("to_date", ""),
+        })
+
+    return render(
+        request,
+        "reporting/purchase_register.html",
+        data
+    )
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def purchase_register_export_excel(request):
+
+    data, valid = _purchase_register_data(request)
+
+    if not valid:
+        return HttpResponseBadRequest("; ".join(data["errors"]))
+
+    workbook = Workbook()
+
+    sheet = workbook.active
+    sheet.title = "Purchase Register"
+
+    headers = [
+        "Purchase Date",
+        "Purchase Number",
+        "Supplier",
+        "Supplier Invoice",
+        "Raw Material",
+        "SKU",
+        "Quantity",
+        "Unit",
+        "Unit Cost",
+        "Line Total",
+    ]
+
+    sheet.append(headers)
+
+    for row in data["rows"]:
+
+        sheet.append([
+            row["purchase_date"].strftime("%d-%m-%Y"),
+            row["purchase_number"],
+            row["supplier"],
+            row["supplier_invoice"],
+            row["material"],
+            row["sku"],
+            float(row["quantity"]),
+            row["unit"],
+            float(row["unit_cost"]),
+            float(row["line_total"]),
+        ])
+
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(
+            fill_type="solid",
+            fgColor="315B73"
+        )
+        cell.alignment = Alignment(horizontal="center")
+
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
+
+    widths = [16, 22, 25, 22, 25, 18, 14, 12, 16, 18]
+
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[
+            sheet.cell(row=1, column=index).column_letter
+        ].width = width
+
+    for row_number in range(2, sheet.max_row + 1):
+        sheet.cell(row_number, 7).number_format = "#,##0.000"
+        sheet.cell(row_number, 9).number_format = '₹#,##0.00'
+        sheet.cell(row_number, 10).number_format = '₹#,##0.00'
+
+    summary = workbook.create_sheet("Summary")
+
+    summary.append(["Purchase Register Summary", "Value"])
+    summary.append(["Posted Purchases", data["purchase_count"]])
+    summary.append(["Purchase Line Items", data["line_count"]])
+    summary.append(["Total Purchase Value", float(data["total_value"])])
+    summary.append(["From Date", data["from_date"] or "All dates"])
+    summary.append(["To Date", data["to_date"] or "All dates"])
+
+    for cell in summary[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(
+            fill_type="solid",
+            fgColor="315B73"
+        )
+
+    summary.column_dimensions["A"].width = 28
+    summary.column_dimensions["B"].width = 25
+    summary["B4"].number_format = '₹#,##0.00'
+
+    output = BytesIO()
+    workbook.save(output)
+
+    response = HttpResponse(
+        output.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        )
+    )
+
+    response["Content-Disposition"] = (
+        'attachment; filename="purchase_register.xlsx"'
+    )
+
+    return response
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def purchase_register_export_pdf(request):
+
+    data, valid = _purchase_register_data(request)
+
+    if not valid:
+        return HttpResponseBadRequest("; ".join(data["errors"]))
+
+    response = HttpResponse(content_type="application/pdf")
+
+    response["Content-Disposition"] = (
+        'attachment; filename="purchase_register.pdf"'
+    )
+
+    document = SimpleDocTemplate(
+        response,
+        pagesize=landscape(A4),
+        rightMargin=10 * mm,
+        leftMargin=10 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    elements = [
+        Paragraph("PURCHASE REGISTER", styles["Title"]),
+        Spacer(1, 5 * mm),
+        Paragraph(
+            f"Posted Purchases: {data['purchase_count']} | "
+            f"Line Items: {data['line_count']} | "
+            f"Total Value: Rs. {data['total_value']:.2f}",
+            styles["Normal"]
+        ),
+        Spacer(1, 6 * mm),
+    ]
+
+    table_data = [[
+        "Date",
+        "Purchase No.",
+        "Supplier",
+        "Supplier Invoice",
+        "Material",
+        "SKU",
+        "Quantity",
+        "Unit",
+        "Unit Cost",
+        "Line Total",
+    ]]
+
+    for row in data["rows"]:
+
+        table_data.append([
+            row["purchase_date"].strftime("%d-%m-%Y"),
+            escape(row["purchase_number"]),
+            escape(row["supplier"]),
+            escape(row["supplier_invoice"]),
+            escape(row["material"]),
+            escape(row["sku"]),
+            str(row["quantity"]),
+            escape(row["unit"]),
+            f"Rs. {row['unit_cost']:.2f}",
+            f"Rs. {row['line_total']:.2f}",
+        ])
+
+    if not data["rows"]:
+        table_data.append(["No posted purchases found."] + [""] * 9)
+
+    table = LongTable(
+        table_data,
+        colWidths=[
+            17*mm, 25*mm, 32*mm, 27*mm, 32*mm,
+            20*mm, 19*mm, 12*mm, 23*mm, 25*mm,
+        ],
+        repeatRows=1,
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#315B73")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    elements.append(table)
+
+    document.build(elements)
+
+    return response
+
+def _gst_outward_data(request):
+    """Prepare GST figures from issued invoices and their invoice lines."""
+
+    raw_from = request.GET.get("from_date", "").strip()
+    raw_to = request.GET.get("to_date", "").strip()
+
+    start_date = parse_date(raw_from) if raw_from else None
+    end_date = parse_date(raw_to) if raw_to else None
+
+    errors = []
+
+    if raw_from and start_date is None:
+        errors.append("Invalid starting date.")
+
+    if raw_to and end_date is None:
+        errors.append("Invalid ending date.")
+
+    if start_date and end_date and end_date < start_date:
+        errors.append("Ending date cannot be before starting date.")
+
+    if errors:
+        return {"errors": errors}, False
+
+    queryset = (
+        Invoice.objects
+        .filter(status=Invoice.Status.ISSUED)
+        .prefetch_related("lines")
+        .order_by("invoice_date", "invoice_number")
+    )
+
+    if start_date:
+        queryset = queryset.filter(invoice_date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(invoice_date__lte=end_date)
+
+    invoices = list(queryset)
+
+    invoice_rows = []
+    line_rows = []
+
+    totals = {
+        "taxable_value": Decimal("0.00"),
+        "cgst": Decimal("0.00"),
+        "sgst": Decimal("0.00"),
+        "igst": Decimal("0.00"),
+        "total_gst": Decimal("0.00"),
+        "grand_total": Decimal("0.00"),
+    }
+
+    for invoice in invoices:
+
+        gst_amount = (
+            invoice.cgst_total
+            + invoice.sgst_total
+            + invoice.igst_total
+        )
+
+        invoice_rows.append({
+            "invoice_number": invoice.invoice_number,
+            "invoice_date": invoice.invoice_date,
+            "seller_name": invoice.seller_name,
+            "seller_gstin": invoice.seller_gstin or "Not configured",
+            "customer_name": invoice.customer_name,
+            "customer_gstin": invoice.customer_gstin or "Not configured",
+            "place_of_supply": invoice.place_of_supply,
+            "state_code": invoice.place_of_supply_state_code,
+            "taxable_value": invoice.taxable_value,
+            "cgst": invoice.cgst_total,
+            "sgst": invoice.sgst_total,
+            "igst": invoice.igst_total,
+            "total_gst": gst_amount,
+            "grand_total": invoice.grand_total,
+        })
+
+        totals["taxable_value"] += invoice.taxable_value
+        totals["cgst"] += invoice.cgst_total
+        totals["sgst"] += invoice.sgst_total
+        totals["igst"] += invoice.igst_total
+        totals["total_gst"] += gst_amount
+        totals["grand_total"] += invoice.grand_total
+
+        for line in invoice.lines.all():
+
+            line_rows.append({
+                "invoice_number": invoice.invoice_number,
+                "invoice_date": invoice.invoice_date,
+                "customer_name": invoice.customer_name,
+                "hsn_code": line.hsn_code or "-",
+                "product_name": line.product_name,
+                "quantity": line.quantity,
+                "gst_rate": line.gst_rate,
+                "taxable_value": line.taxable_value,
+                "cgst": line.cgst_amount,
+                "sgst": line.sgst_amount,
+                "igst": line.igst_amount,
+                "total_amount": line.total_amount,
+            })
+
+    return {
+        "errors": [],
+        "invoice_rows": invoice_rows,
+        "line_rows": line_rows,
+        "invoice_count": len(invoices),
+        "line_count": len(line_rows),
+        "totals": totals,
+        "from_date": raw_from,
+        "to_date": raw_to,
+    }, True
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def gst_outward_report(request):
+
+    data, valid = _gst_outward_data(request)
+
+    if not valid:
+        data.update({
+            "invoice_rows": [],
+            "line_rows": [],
+            "invoice_count": 0,
+            "line_count": 0,
+            "totals": {
+                "taxable_value": Decimal("0.00"),
+                "cgst": Decimal("0.00"),
+                "sgst": Decimal("0.00"),
+                "igst": Decimal("0.00"),
+                "total_gst": Decimal("0.00"),
+                "grand_total": Decimal("0.00"),
+            },
+            "from_date": request.GET.get("from_date", ""),
+            "to_date": request.GET.get("to_date", ""),
+        })
+
+    return render(
+        request,
+        "reporting/gst_outward_report.html",
+        data
+    )
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def gst_outward_export_excel(request):
+
+    data, valid = _gst_outward_data(request)
+
+    if not valid:
+        return HttpResponseBadRequest("; ".join(data["errors"]))
+
+    workbook = Workbook()
+
+    summary = workbook.active
+    summary.title = "Summary"
+
+    summary.append(["GST Outward Supply Summary", "Value"])
+    summary.append(["Issued Invoices", data["invoice_count"]])
+    summary.append(["Invoice Line Items", data["line_count"]])
+    summary.append(["Taxable Value", float(data["totals"]["taxable_value"])])
+    summary.append(["CGST", float(data["totals"]["cgst"])])
+    summary.append(["SGST", float(data["totals"]["sgst"])])
+    summary.append(["IGST", float(data["totals"]["igst"])])
+    summary.append(["Total GST", float(data["totals"]["total_gst"])])
+    summary.append(["Grand Total", float(data["totals"]["grand_total"])])
+    summary.append(["From Date", data["from_date"] or "All dates"])
+    summary.append(["To Date", data["to_date"] or "All dates"])
+
+    invoice_sheet = workbook.create_sheet("Invoice Register")
+
+    invoice_sheet.append([
+        "Invoice Number",
+        "Invoice Date",
+        "Seller",
+        "Seller GSTIN",
+        "Customer",
+        "Customer GSTIN",
+        "Place of Supply",
+        "State Code",
+        "Taxable Value",
+        "CGST",
+        "SGST",
+        "IGST",
+        "Total GST",
+        "Grand Total",
+    ])
+
+    for row in data["invoice_rows"]:
+        invoice_sheet.append([
+            row["invoice_number"],
+            row["invoice_date"].strftime("%d-%m-%Y"),
+            row["seller_name"],
+            row["seller_gstin"],
+            row["customer_name"],
+            row["customer_gstin"],
+            row["place_of_supply"],
+            row["state_code"],
+            float(row["taxable_value"]),
+            float(row["cgst"]),
+            float(row["sgst"]),
+            float(row["igst"]),
+            float(row["total_gst"]),
+            float(row["grand_total"]),
+        ])
+
+    hsn_sheet = workbook.create_sheet("HSN Details")
+
+    hsn_sheet.append([
+        "Invoice Number",
+        "Invoice Date",
+        "Customer",
+        "HSN Code",
+        "Product",
+        "Quantity",
+        "GST Rate %",
+        "Taxable Value",
+        "CGST",
+        "SGST",
+        "IGST",
+        "Total",
+    ])
+
+    for row in data["line_rows"]:
+        hsn_sheet.append([
+            row["invoice_number"],
+            row["invoice_date"].strftime("%d-%m-%Y"),
+            row["customer_name"],
+            row["hsn_code"],
+            row["product_name"],
+            row["quantity"],
+            float(row["gst_rate"]),
+            float(row["taxable_value"]),
+            float(row["cgst"]),
+            float(row["sgst"]),
+            float(row["igst"]),
+            float(row["total_amount"]),
+        ])
+
+    for sheet in workbook.worksheets:
+
+        for cell in sheet[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(
+                fill_type="solid",
+                fgColor="315B73"
+            )
+            cell.alignment = Alignment(horizontal="center")
+
+        sheet.freeze_panes = "A2"
+        sheet.auto_filter.ref = sheet.dimensions
+
+        for column in sheet.columns:
+            column_letter = column[0].column_letter
+            max_length = max(
+                len(str(cell.value or ""))
+                for cell in column
+            )
+            sheet.column_dimensions[column_letter].width = min(
+                max(max_length + 3, 14), 32
+            )
+
+    for row_number in range(2, summary.max_row + 1):
+        if row_number in range(4, 10):
+            summary.cell(row_number, 2).number_format = '₹#,##0.00'
+
+    for row_number in range(2, invoice_sheet.max_row + 1):
+     for column_number in range(9, 15):
+        invoice_sheet.cell(
+            row_number,
+            column_number
+        ).number_format = '₹#,##0.00'
+
+        for row_number in range(2, invoice_sheet.max_row + 1):
+         for column_number in range(9, 15):
+            invoice_sheet.cell(
+                row_number,
+                column_number
+            ).number_format = '₹#,##0.00'
+
+    for row_number in range(2, hsn_sheet.max_row + 1):
+        for column_number in range(8, 13):
+            hsn_sheet.cell(
+                row_number,
+                column_number
+            ).number_format = '₹#,##0.00'
+
+    output = BytesIO()
+    workbook.save(output)
+
+    response = HttpResponse(
+        output.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        )
+    )
+
+    response["Content-Disposition"] = (
+        'attachment; filename="gst_outward_supply.xlsx"'
+    )
+
+    return response
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def gst_outward_export_pdf(request):
+
+    data, valid = _gst_outward_data(request)
+
+    if not valid:
+        return HttpResponseBadRequest("; ".join(data["errors"]))
+
+    response = HttpResponse(content_type="application/pdf")
+
+    response["Content-Disposition"] = (
+        'attachment; filename="gst_outward_supply.pdf"'
+    )
+
+    document = SimpleDocTemplate(
+        response,
+        pagesize=landscape(A4),
+        rightMargin=10 * mm,
+        leftMargin=10 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    totals = data["totals"]
+
+    elements = [
+        Paragraph("GST OUTWARD SUPPLY SUMMARY", styles["Title"]),
+        Spacer(1, 5 * mm),
+        Paragraph(
+            f"Issued Invoices: {data['invoice_count']} | "
+            f"Taxable Value: Rs. {totals['taxable_value']:.2f} | "
+            f"Total GST: Rs. {totals['total_gst']:.2f} | "
+            f"Grand Total: Rs. {totals['grand_total']:.2f}",
+            styles["Normal"]
+        ),
+        Spacer(1, 4 * mm),
+        Paragraph(
+            f"CGST: Rs. {totals['cgst']:.2f} | "
+            f"SGST: Rs. {totals['sgst']:.2f} | "
+            f"IGST: Rs. {totals['igst']:.2f}",
+            styles["Normal"]
+        ),
+        Spacer(1, 6 * mm),
+    ]
+
+    table_data = [[
+        "Invoice Date",
+        "Invoice Number",
+        "Customer",
+        "Customer GSTIN",
+        "Place of Supply",
+        "Taxable",
+        "CGST",
+        "SGST",
+        "IGST",
+        "Grand Total",
+    ]]
+
+    for row in data["invoice_rows"]:
+        table_data.append([
+            row["invoice_date"].strftime("%d-%m-%Y"),
+            escape(row["invoice_number"]),
+            escape(row["customer_name"]),
+            escape(row["customer_gstin"]),
+            escape(row["place_of_supply"]),
+            f"{row['taxable_value']:.2f}",
+            f"{row['cgst']:.2f}",
+            f"{row['sgst']:.2f}",
+            f"{row['igst']:.2f}",
+            f"{row['grand_total']:.2f}",
+        ])
+
+    if not data["invoice_rows"]:
+        table_data.append(["No issued invoices found."] + [""] * 9)
+
+    table = LongTable(
+        table_data,
+        colWidths=[
+            20*mm, 27*mm, 30*mm, 29*mm, 28*mm,
+            23*mm, 19*mm, 19*mm, 19*mm, 25*mm,
+        ],
+        repeatRows=1,
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#315B73")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    elements.append(table)
+
+    document.build(elements)
+
+    return response
