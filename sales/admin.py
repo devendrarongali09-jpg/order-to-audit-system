@@ -5,7 +5,8 @@ from django.template.response import TemplateResponse
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.urls import reverse
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
+from inventory.services import get_stock_balance
 from .models import (
     SalesOrder,
     SalesOrderItem,
@@ -23,6 +24,7 @@ from django.core.exceptions import ValidationError
 from .models import Payment, Invoice
 from .services import record_payment
 from .services import (
+    check_order_stock,
     submit_order,
     approve_order,
     generate_invoice,
@@ -69,13 +71,14 @@ class SalesOrderItemInline(admin.TabularInline):
 class SalesOrderAdmin(admin.ModelAdmin):
 
     list_display = (
-        "order_number",
-        "customer",
-        "order_date",
-        "status",
-        "total_amount",
-        "created_by",
-    )
+    "order_number",
+    "customer",
+    "order_date",
+    "status",
+    "stock_coverage",
+    "total_amount",
+    "created_by",
+)
 
     list_filter = (
         "status",
@@ -105,6 +108,83 @@ class SalesOrderAdmin(admin.ModelAdmin):
         "approve_selected_orders",
         "generate_selected_invoices",
     ]
+    def _stock_coverage_rows(self, obj):
+        if obj is None:
+            return []
+
+        rows = []
+
+        for item in obj.items.select_related("product").all():
+
+            already_dispatched = sum(
+                DispatchItem.objects.filter(
+                    order_item_id=item.pk,
+                    dispatch__status=Dispatch.Status.POSTED
+                ).values_list("quantity", flat=True)
+            )
+
+            remaining = max(
+                item.quantity - already_dispatched,
+                0
+            )
+
+            available = get_stock_balance(
+                product=item.product
+            )
+
+            shortage = max(remaining - available, 0)
+
+            rows.append((
+                item.product.name,
+                item.quantity,
+                already_dispatched,
+                remaining,
+                available,
+                shortage,
+            ))
+
+        return rows
+
+    @admin.display(description="Stock coverage")
+    def stock_coverage(self, obj):
+        rows = self._stock_coverage_rows(obj)
+
+        if not rows:
+            return "No items"
+
+        if all(row[3] == 0 for row in rows):
+            return "Fully dispatched"
+
+        shortages = [
+            f"{name}: shortage {shortage}"
+            for name, ordered, dispatched, remaining,
+                available, shortage in rows
+            if shortage > 0
+        ]
+
+        if shortages:
+            return format_html(
+                '<span style="color:#b45309; font-weight:600;">'
+                'Shortage: {}</span>',
+                "; ".join(shortages)
+            )
+
+        return "Stock covered"
+
+    @admin.display(description="Stock coverage details")
+    def stock_coverage_details(self, obj):
+        rows = self._stock_coverage_rows(obj)
+
+        if not rows:
+            return "No items on this order."
+
+        return format_html_join(
+            "; ",
+            "{} — Ordered: {}, Dispatched: {}, "
+            "Remaining: {}, Available: {}, Shortage: {}",
+            rows,
+        )
+
     def _is_salesman(self, request):
         if request.user.is_superuser:
             return False
@@ -204,19 +284,19 @@ class SalesOrderAdmin(admin.ModelAdmin):
 
     # ACTION 2: Approve orders
 
-    @admin.action(description="Approve selected submitted orders")
-    def approve_selected_orders(self, request, queryset):
+        @admin.action(description="Approve selected submitted orders")
+        def approve_selected_orders(self, request, queryset):
 
-        for order in queryset:
-
+         for order in queryset:
             try:
+                shortages = check_order_stock(order)
+
                 approve_order(
                     order_id=order.pk,
                     user=request.user,
                 )
 
             except ValidationError as exc:
-
                 self.message_user(
                     request,
                     f"{order.order_number}: {'; '.join(exc.messages)}",
@@ -224,13 +304,26 @@ class SalesOrderAdmin(admin.ModelAdmin):
                 )
 
             else:
-
-                self.message_user(
-                    request,
-                    f"{order.order_number} approved successfully.",
-                    level=messages.SUCCESS,
-                )
-
+                if shortages:
+                    self.message_user(
+                        request,
+                        (
+                            f"{order.order_number} approved, "
+                            f"but stock is insufficient: "
+                            f"{'; '.join(shortages)}. "
+                            "Dispatch must wait until stock is available."
+                        ),
+                        level=messages.WARNING,
+                    )
+                else:
+                    self.message_user(
+                        request,
+                        (
+                            f"{order.order_number} approved. "
+                            "Stock covers this order."
+                        ),
+                        level=messages.SUCCESS,
+                    )
     # ACTION 3: Generate GST invoices
 
     @admin.action(
@@ -400,7 +493,6 @@ class PaymentAdminForm(forms.ModelForm):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-
     form = PaymentAdminForm
 
     actions = ["reverse_selected_payments"]
