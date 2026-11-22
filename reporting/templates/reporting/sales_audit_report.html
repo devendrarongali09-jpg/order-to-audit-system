@@ -1,0 +1,727 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Sales Audit Report</title>
+    .excel-btn {
+    background: #16834b;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+}
+
+.pdf-btn {
+    background: #c0392b;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+}
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 25px;
+            color: #263445;
+        }
+
+        .container {
+            max-width: 1350px;
+            margin: auto;
+        }
+
+        .header, .panel, .card {
+            background: white;
+            padding: 22px;
+            margin-bottom: 22px;
+            border-radius: 9px;
+            box-shadow: 0 2px 8px #0000000d;
+        }
+
+        h1, h2, h3 {
+            margin-top: 0;
+        }
+
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: end;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 7px;
+            font-weight: bold;
+        }
+
+        input, select, button {
+            padding: 10px;
+            border: 1px solid #ccd3dc;
+            border-radius: 5px;
+        }
+
+        button {
+            background: #286d91;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+
+        a {
+            color: #286d91;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 15px;
+        }
+
+        .card h3 {
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        .amount {
+            font-size: 23px;
+            font-weight: bold;
+            color: #286d91;
+        }
+
+        .green {
+            color: #16834b;
+        }
+
+        .red {
+            color: #c0392b;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 850px;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e9ef;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            background: #286d91;
+            color: white;
+            white-space: nowrap;
+        }
+
+        tr:hover td {
+            background: #f5f8fb;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 9px;
+            border-radius: 5px;
+            background: #e9eff5;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .error {
+            background: #ffe5e5;
+            padding: 12px;
+            margin-bottom: 10px;
+            color: #a52828;
+            border-radius: 5px;
+        }
+
+        .subtable {
+            min-width: 600px;
+            margin-top: 10px;
+        }
+
+        .muted {
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .filters, .nav {
+                display: none;
+            }
+
+            .header, .panel, .card {
+                box-shadow: none;
+                border: 1px solid #ddd;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="nav">
+        <a href="/admin/">← Back to Django Admin</a>
+        |
+        <a href="{% url 'reporting:stock_movement_report' %}">
+            Stock Movement Report
+        </a>
+        |
+        <a href="{% url 'reporting:raw_material_movement_report' %}">
+            Raw Material Report
+        </a>
+    </div>
+
+    <div class="header">
+
+        <h1>Sales Audit Report</h1>
+
+        <p>
+            Customer sales, order status, invoice reconciliation,
+            payments and dispatch tracking.
+        </p>
+
+    </div>
+
+    <!-- FILTERS -->
+
+    <div class="panel">
+
+        <h2>Report Filters</h2>
+
+        <form method="get" class="filters">
+
+            <div>
+                <label>From Date</label>
+
+                <input
+                    type="date"
+                    name="from_date"
+                    value="{{ from_date }}"
+                >
+            </div>
+
+            <div>
+                <label>To Date</label>
+
+                <input
+                    type="date"
+                    name="to_date"
+                    value="{{ to_date }}"
+                >
+            </div>
+
+            <div>
+                <label>Customer</label>
+
+                <select name="customer">
+
+                    <option value="">All Customers</option>
+
+                    {% for customer in customers %}
+
+                        <option
+                            value="{{ customer.pk }}"
+                            {% if selected_customer == customer.pk|stringformat:"s" %}
+                                selected
+                            {% endif %}
+                        >
+                            {{ customer.name }}
+                        </option>
+
+                    {% endfor %}
+
+                </select>
+            </div>
+
+           <button type="submit">
+    Generate Report
+</button>
+
+<button
+    type="submit"
+    class="excel-btn"
+    formaction="{% url 'reporting:sales_audit_export_excel' %}">
+    Download Excel
+</button>
+
+<button
+    type="submit"
+    class="pdf-btn"
+    formaction="{% url 'reporting:sales_audit_export_pdf' %}">
+    Download PDF
+</button>
+
+<a href="{% url 'reporting:sales_audit_report' %}">
+    Clear Filters
+</a>
+
+        </form>
+
+    </div>
+
+    <!-- ERRORS -->
+
+    {% for error in errors %}
+
+        <div class="error">
+            {{ error }}
+        </div>
+
+    {% endfor %}
+
+    <!-- SUMMARY CARDS -->
+
+    <div class="summary-grid">
+
+        <div class="card">
+            <h3>Total Sales Orders</h3>
+            <div class="amount">
+                {{ summary.order_count }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Total Order Value</h3>
+            <div class="amount">
+                ₹{{ summary.order_value|floatformat:2 }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Invoice Value</h3>
+            <div class="amount">
+                ₹{{ summary.invoice_value|floatformat:2 }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Payments Received</h3>
+            <div class="amount green">
+                ₹{{ summary.received|floatformat:2 }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Outstanding Balance</h3>
+            <div class="amount red">
+                ₹{{ summary.outstanding|floatformat:2 }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Posted Dispatches</h3>
+            <div class="amount">
+                {{ summary.posted_dispatches }}
+            </div>
+        </div>
+
+    </div>
+
+    <!-- SALES ORDER AUDIT -->
+
+    <div class="panel">
+
+        <h2>1. Sales Order Audit</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Order Number</th>
+                        <th>Customer</th>
+                        <th>Order Date</th>
+                        <th>Products</th>
+                        <th>Order Value</th>
+                        <th>Order Status</th>
+                        <th>Invoice</th>
+                        <th>Created By</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for row in report_rows %}
+
+                    <tr>
+
+                        <td>
+                            <strong>
+                                {{ row.order.order_number }}
+                            </strong>
+                        </td>
+
+                        <td>
+                            {{ row.order.customer.name }}
+                        </td>
+
+                        <td>
+                            {{ row.order.order_date|date:"d-m-Y" }}
+                        </td>
+
+                        <td>
+
+                            {% for item in row.items %}
+
+                                {{ item.product.name }}
+                                × {{ item.quantity }}<br>
+
+                            {% empty %}
+
+                                -
+
+                            {% endfor %}
+
+                        </td>
+
+                        <td>
+                            ₹{{ row.order_value|floatformat:2 }}
+                        </td>
+
+                        <td>
+                            <span class="badge">
+                                {{ row.order.get_status_display }}
+                            </span>
+                        </td>
+
+                        <td>
+
+                            {% if row.invoice %}
+
+                                {{ row.invoice.invoice_number }}<br>
+
+                                <span class="muted">
+                                    {{ row.invoice.get_status_display }}
+                                </span>
+
+                            {% else %}
+
+                                Not Generated
+
+                            {% endif %}
+
+                        </td>
+
+                        <td>
+                            {{ row.order.created_by.username }}
+                        </td>
+
+                    </tr>
+
+                    {% empty %}
+
+                    <tr>
+                        <td colspan="8">
+                            No sales orders found.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <!-- INVOICE RECONCILIATION -->
+
+    <div class="panel">
+
+        <h2>2. Invoice and Payment Reconciliation</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Order Number</th>
+                        <th>Customer</th>
+                        <th>Invoice Number</th>
+                        <th>Invoice Date</th>
+                        <th>Invoice Status</th>
+                        <th>Grand Total</th>
+                        <th>Amount Paid</th>
+                        <th>Balance Due</th>
+                        <th>Payment Status</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for row in report_rows %}
+
+                        {% if row.invoice %}
+
+                        <tr>
+
+                            <td>
+                                {{ row.order.order_number }}
+                            </td>
+
+                            <td>
+                                {{ row.order.customer.name }}
+                            </td>
+
+                            <td>
+                                {{ row.invoice.invoice_number }}
+                            </td>
+
+                            <td>
+                                {{ row.invoice.invoice_date|date:"d-m-Y" }}
+                            </td>
+
+                            <td>
+                                {{ row.invoice.get_status_display }}
+                            </td>
+
+                            <td>
+                                ₹{{ row.invoice.grand_total|floatformat:2 }}
+                            </td>
+
+                            <td class="green">
+                                ₹{{ row.amount_paid|floatformat:2 }}
+                            </td>
+
+                            <td class="red">
+                                ₹{{ row.balance_due|floatformat:2 }}
+                            </td>
+
+                            <td>
+                                <span class="badge">
+                                    {{ row.payment_status }}
+                                </span>
+                            </td>
+
+                        </tr>
+
+                        {% endif %}
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <!-- PAYMENT LEDGER -->
+
+    <div class="panel">
+
+        <h2>3. Detailed Payment Ledger</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Order Number</th>
+                        <th>Customer</th>
+                        <th>Invoice Number</th>
+                        <th>Payment Date</th>
+                        <th>Amount</th>
+                        <th>Method</th>
+                        <th>Status</th>
+                        <th>Transaction Reference</th>
+                        <th>Received By</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for entry in payment_ledger %}
+
+                    <tr>
+
+                        <td>
+                            {{ entry.order_number }}
+                        </td>
+
+                        <td>
+                            {{ entry.customer }}
+                        </td>
+
+                        <td>
+                            {{ entry.invoice_number }}
+                        </td>
+
+                        <td>
+                            {{ entry.payment.payment_date|date:"d-m-Y" }}
+                        </td>
+
+                        <td>
+                            ₹{{ entry.payment.amount|floatformat:2 }}
+                        </td>
+
+                        <td>
+                            {{ entry.payment.get_method_display }}
+                        </td>
+
+                        <td>
+
+                            <span class="badge">
+                                {{ entry.payment.get_status_display }}
+                            </span>
+
+                        </td>
+
+                        <td>
+                            {{ entry.payment.transaction_reference|default:"-" }}
+                        </td>
+
+                        <td>
+                            {{ entry.payment.received_by.username }}
+                        </td>
+
+                    </tr>
+
+                    {% empty %}
+
+                    <tr>
+                        <td colspan="9">
+                            No payment records found.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <!-- DISPATCH LEDGER -->
+
+    <div class="panel">
+
+        <h2>4. Dispatch Audit Ledger</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Order Number</th>
+                        <th>Customer</th>
+                        <th>Dispatch Number</th>
+                        <th>Dispatch Date</th>
+                        <th>Quantity</th>
+                        <th>Status</th>
+                        <th>Posted By</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for entry in dispatch_ledger %}
+
+                    <tr>
+
+                        <td>
+                            {{ entry.order_number }}
+                        </td>
+
+                        <td>
+                            {{ entry.customer }}
+                        </td>
+
+                        <td>
+                            {{ entry.dispatch_number }}
+                        </td>
+
+                        <td>
+                            {{ entry.dispatch_date|date:"d-m-Y" }}
+                        </td>
+
+                        <td>
+                            {{ entry.quantity }}
+                        </td>
+
+                        <td>
+                            <span class="badge">
+                                {{ entry.status }}
+                            </span>
+                        </td>
+
+                        <td>
+                            {{ entry.posted_by }}
+                        </td>
+
+                    </tr>
+
+                    {% empty %}
+
+                    <tr>
+                        <td colspan="7">
+                            No dispatch records found.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <div class="panel">
+
+        <h2>5. Audit Information</h2>
+
+        <p>
+            Total Cancelled Invoices:
+            <strong>{{ summary.cancelled_invoices }}</strong>
+        </p>
+
+        <p class="muted">
+            Report generated from the existing Sales,
+            Invoice, Payment and Dispatch records.
+        </p>
+
+        <button onclick="window.print()">
+            Print Report
+        </button>
+
+    </div>
+
+</div>
+
+</body>
+</html>

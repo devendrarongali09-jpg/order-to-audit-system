@@ -1,0 +1,722 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Production Audit Report</title>
+    .excel-btn {
+    background: #16834b;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+}
+
+.pdf-btn {
+    background: #c0392b;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+}
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 25px;
+            color: #263445;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: auto;
+        }
+
+        .header, .panel, .card {
+            background: white;
+            padding: 22px;
+            margin-bottom: 22px;
+            border-radius: 9px;
+            box-shadow: 0 2px 8px #0000000d;
+        }
+
+        h1, h2 {
+            margin-top: 0;
+        }
+
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: end;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 7px;
+            font-weight: bold;
+        }
+
+        input, select, button {
+            padding: 10px;
+            border: 1px solid #ccd3dc;
+            border-radius: 5px;
+        }
+
+        button {
+            background: #286d91;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+
+        a {
+            color: #286d91;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 15px;
+        }
+
+        .card h3 {
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        .amount {
+            font-size: 23px;
+            font-weight: bold;
+            color: #286d91;
+        }
+
+        .green {
+            color: #16834b;
+        }
+
+        .red {
+            color: #c0392b;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 850px;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e9ef;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            background: #286d91;
+            color: white;
+            white-space: nowrap;
+        }
+
+        tr:hover td {
+            background: #f5f8fb;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 9px;
+            border-radius: 5px;
+            background: #e9eff5;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .error {
+            background: #ffe5e5;
+            padding: 12px;
+            margin-bottom: 10px;
+            color: #a52828;
+            border-radius: 5px;
+        }
+
+        .muted {
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .filters, .nav {
+                display: none;
+            }
+
+            .header, .panel, .card {
+                box-shadow: none;
+                border: 1px solid #ddd;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="nav">
+        <a href="/admin/">← Back to Django Admin</a>
+        |
+        <a href="{% url 'reporting:stock_movement_report' %}">
+            Finished Goods Report
+        </a>
+        |
+        <a href="{% url 'reporting:raw_material_movement_report' %}">
+            Raw Material Report
+        </a>
+        |
+        <a href="{% url 'reporting:sales_audit_report' %}">
+            Sales Audit Report
+        </a>
+    </div>
+
+    <div class="header">
+
+        <h1>Production Audit Report</h1>
+
+        <p>
+            Production runs, raw material consumption,
+            finished goods output and production costs.
+        </p>
+
+    </div>
+
+    <!-- REPORT FILTERS -->
+
+    <div class="panel">
+
+        <h2>Report Filters</h2>
+
+        <form method="get" class="filters">
+
+            <div>
+                <label>From Date</label>
+
+                <input
+                    type="date"
+                    name="from_date"
+                    value="{{ from_date }}"
+                >
+            </div>
+
+            <div>
+                <label>To Date</label>
+
+                <input
+                    type="date"
+                    name="to_date"
+                    value="{{ to_date }}"
+                >
+            </div>
+
+            <div>
+                <label>Product</label>
+
+                <select name="product">
+
+                    <option value="">All Products</option>
+
+                    {% for product in products %}
+
+                        <option
+                            value="{{ product.pk }}"
+                            {% if selected_product == product.pk|stringformat:"s" %}
+                                selected
+                            {% endif %}
+                        >
+                            {{ product.name }}
+                        </option>
+
+                    {% endfor %}
+
+                </select>
+            </div>
+
+            <div>
+                <label>Production Status</label>
+
+                <select name="status">
+
+                    <option value="">All Statuses</option>
+
+                    {% for value, label in status_choices %}
+
+                        <option
+                            value="{{ value }}"
+                            {% if selected_status == value %}
+                                selected
+                            {% endif %}
+                        >
+                            {{ label }}
+                        </option>
+
+                    {% endfor %}
+
+                </select>
+            </div>
+
+           <button type="submit">
+    Generate Report
+</button>
+
+<button
+    type="submit"
+    class="excel-btn"
+    formaction="{% url 'reporting:production_audit_export_excel' %}">
+    Download Excel
+</button>
+
+<button
+    type="submit"
+    class="pdf-btn"
+    formaction="{% url 'reporting:production_audit_export_pdf' %}">
+    Download PDF
+</button>
+
+<a href="{% url 'reporting:production_audit_report' %}">
+    Clear Filters
+</a>
+
+        </form>
+
+    </div>
+
+    <!-- VALIDATION ERRORS -->
+
+    {% for error in errors %}
+
+        <div class="error">
+            {{ error }}
+        </div>
+
+    {% endfor %}
+
+    <!-- SUMMARY CARDS -->
+
+    <div class="summary-grid">
+
+        <div class="card">
+            <h3>Total Production Runs</h3>
+            <div class="amount">
+                {{ summary.total_runs }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Posted Runs</h3>
+            <div class="amount green">
+                {{ summary.posted_runs }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Draft Runs</h3>
+            <div class="amount">
+                {{ summary.draft_runs }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Costed Runs</h3>
+            <div class="amount">
+                {{ summary.costed_runs }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Expected Output</h3>
+            <div class="amount">
+                {{ summary.expected_output|floatformat:3 }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Good Output</h3>
+            <div class="amount green">
+                {{ summary.good_output|floatformat:3 }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Output Wastage</h3>
+            <div class="amount red">
+                {{ summary.wastage|floatformat:3 }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Material Cost</h3>
+            <div class="amount">
+                ₹{{ summary.material_cost|floatformat:2 }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Total Production Cost</h3>
+            <div class="amount">
+                ₹{{ summary.total_cost|floatformat:2 }}
+            </div>
+        </div>
+
+    </div>
+
+    <!-- PRODUCTION RUN AUDIT -->
+
+    <div class="panel">
+
+        <h2>1. Production Run Audit</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Run Number</th>
+                        <th>Production Date</th>
+                        <th>Product</th>
+                        <th>BOM</th>
+                        <th>Batch Count</th>
+                        <th>Expected Output</th>
+                        <th>Good Output</th>
+                        <th>Wastage</th>
+                        <th>Yield Variance %</th>
+                        <th>Status</th>
+                        <th>Created By</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for row in report_rows %}
+
+                    <tr>
+
+                        <td>
+                            <strong>{{ row.run.run_number }}</strong>
+                        </td>
+
+                        <td>
+                            {{ row.run.production_date|date:"d-m-Y" }}
+                        </td>
+
+                        <td>
+                            {{ row.product.name }}
+                        </td>
+
+                        <td>
+                            {{ row.bom.code }}
+                        </td>
+
+                        <td>
+                            {{ row.run.batch_count }}
+                        </td>
+
+                        <td>
+                            {{ row.expected_output|floatformat:3 }}
+                            {{ row.output_unit }}
+                        </td>
+
+                        <td class="green">
+                            {{ row.actual_output|floatformat:3 }}
+                            {{ row.output_unit }}
+                        </td>
+
+                        <td class="red">
+                            {{ row.output_wastage|floatformat:3 }}
+                        </td>
+
+                        <td>
+                            {{ row.yield_variance|floatformat:2 }}%
+                        </td>
+
+                        <td>
+                            <span class="badge">
+                                {{ row.run.get_status_display }}
+                            </span>
+                        </td>
+
+                        <td>
+                            {% if row.run.created_by %}
+                                {{ row.run.created_by.username }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+
+                    </tr>
+
+                    {% empty %}
+
+                    <tr>
+                        <td colspan="11">
+                            No production runs found.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <!-- RAW MATERIAL CONSUMPTION -->
+
+    <div class="panel">
+
+        <h2>2. Raw Material Consumption Ledger</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Run Number</th>
+                        <th>Production Date</th>
+                        <th>Product</th>
+                        <th>Raw Material</th>
+                        <th>SKU</th>
+                        <th>Planned Quantity</th>
+                        <th>Actual Quantity</th>
+                        <th>Variance</th>
+                        <th>Variance %</th>
+                        <th>Unit</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for item in consumption_ledger %}
+
+                    <tr>
+
+                        <td>
+                            {{ item.run_number }}
+                        </td>
+
+                        <td>
+                            {{ item.production_date|date:"d-m-Y" }}
+                        </td>
+
+                        <td>
+                            {{ item.product }}
+                        </td>
+
+                        <td>
+                            {{ item.material }}
+                        </td>
+
+                        <td>
+                            {{ item.sku }}
+                        </td>
+
+                        <td>
+                            {{ item.planned|floatformat:3 }}
+                        </td>
+
+                        <td>
+                            {{ item.actual|floatformat:3 }}
+                        </td>
+
+                        <td>
+                            {{ item.variance|floatformat:3 }}
+                        </td>
+
+                        <td>
+                            {{ item.variance_percent|floatformat:2 }}%
+                        </td>
+
+                        <td>
+                            {{ item.unit }}
+                        </td>
+
+                    </tr>
+
+                    {% empty %}
+
+                    <tr>
+                        <td colspan="10">
+                            No consumption records found.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <!-- PRODUCTION COST AUDIT -->
+
+    <div class="panel">
+
+        <h2>3. Production Cost Analysis</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Run Number</th>
+                        <th>Product</th>
+                        <th>Material Cost</th>
+                        <th>Labour Cost</th>
+                        <th>Gas / Power Cost</th>
+                        <th>Other Overhead</th>
+                        <th>Total Cost</th>
+                        <th>Cost Per Packet</th>
+                        <th>Valuation Method</th>
+                        <th>Calculated At</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for item in cost_ledger %}
+
+                    <tr>
+
+                        <td>
+                            {{ item.run.run_number }}
+                        </td>
+
+                        <td>
+                            {{ item.product.name }}
+                        </td>
+
+                        <td>
+                            ₹{{ item.material_cost|floatformat:2 }}
+                        </td>
+
+                        <td>
+                            ₹{{ item.labour_cost|floatformat:2 }}
+                        </td>
+
+                        <td>
+                            ₹{{ item.gas_power_cost|floatformat:2 }}
+                        </td>
+
+                        <td>
+                            ₹{{ item.other_overhead|floatformat:2 }}
+                        </td>
+
+                        <td class="green">
+                            <strong>
+                                ₹{{ item.total_cost|floatformat:2 }}
+                            </strong>
+                        </td>
+
+                        <td>
+                            ₹{{ item.cost_per_packet|floatformat:2 }}
+                        </td>
+
+                        <td>
+                            {{ item.valuation_method }}
+                        </td>
+
+                        <td>
+                            {% if item.calculated_at %}
+                                {{ item.calculated_at|date:"d-m-Y H:i" }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+
+                    </tr>
+
+                    {% empty %}
+
+                    <tr>
+                        <td colspan="10">
+                            No production cost records found.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <!-- AUDIT INFORMATION -->
+
+    <div class="panel">
+
+        <h2>4. Production Audit Information</h2>
+
+        <p>
+            Total Production Runs:
+            <strong>{{ summary.total_runs }}</strong>
+        </p>
+
+        <p>
+            Posted Production Runs:
+            <strong>{{ summary.posted_runs }}</strong>
+        </p>
+
+        <p>
+            Draft Production Runs:
+            <strong>{{ summary.draft_runs }}</strong>
+        </p>
+
+        <p>
+            Consumption Records:
+            <strong>{{ summary.material_lines }}</strong>
+        </p>
+
+        <p>
+            Production Cost Records:
+            <strong>{{ summary.costed_runs }}</strong>
+        </p>
+
+        <p class="muted">
+            Report generated from existing BOM, Production Run,
+            Production Consumption and Production Cost records.
+        </p>
+
+        <button onclick="window.print()">
+            Print Report
+        </button>
+
+    </div>
+
+</div>
+
+</body>
+</html>

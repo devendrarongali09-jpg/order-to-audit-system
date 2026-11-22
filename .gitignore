@@ -1,0 +1,25 @@
+.venv/
+.env
+__pycache__/
+*.py[cod]
+db.sqlite3
+# Local backup copies
+/backup/
+
+# Environment files
+.env.*
+!.env.example
+
+# Django generated files
+staticfiles/
+media/
+*.log
+
+# Database backups
+*.sql
+*.dump
+*.backup
+
+# Python tools
+.pytest_cache/
+.mypy_cache/

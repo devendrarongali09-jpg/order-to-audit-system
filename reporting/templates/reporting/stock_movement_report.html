@@ -1,0 +1,359 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Movement Audit Report</title>
+.excel-btn {
+    background: #16834b;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    text-decoration: none;
+    border: none;
+}
+
+.pdf-btn {
+    background: #c0392b;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    text-decoration: none;
+    border: none;
+}
+
+.excel-btn:hover {
+    background: #116a3c;
+}
+
+.pdf-btn:hover {
+    background: #962d22;
+}
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 25px;
+            color: #263445;
+        }
+
+        .container {
+            max-width: 1250px;
+            margin: auto;
+        }
+
+        .header, .panel {
+            background: white;
+            padding: 22px;
+            margin-bottom: 22px;
+            border-radius: 9px;
+            box-shadow: 0 2px 8px #0000000d;
+        }
+
+        h1, h2 {
+            margin-top: 0;
+        }
+
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: end;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 7px;
+            font-weight: bold;
+        }
+
+        input, select, button {
+            padding: 10px;
+            border: 1px solid #ccd3dc;
+            border-radius: 5px;
+        }
+
+        button {
+            background: #286d91;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+
+        a {
+            color: #286d91;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 750px;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e9ef;
+            text-align: left;
+        }
+
+        th {
+            background: #286d91;
+            color: white;
+        }
+
+        tr:hover td {
+            background: #f5f8fb;
+        }
+
+        .error {
+            background: #ffe5e5;
+            padding: 12px;
+            margin-bottom: 10px;
+            color: #a52828;
+            border-radius: 5px;
+        }
+
+        .positive {
+            color: #16834b;
+            font-weight: bold;
+        }
+
+        .negative {
+            color: #c0392b;
+            font-weight: bold;
+        }
+
+        .nav {
+            margin-bottom: 18px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="nav">
+        <a href="/admin/">← Back to Django Admin</a>
+    </div>
+
+    <div class="header">
+        <h1>Stock Movement Audit Report</h1>
+        <p>
+            Finished goods inventory movement and balance report.
+        </p>
+    </div>
+
+    <div class="panel">
+
+        <h2>Report Filters</h2>
+
+        <form method="get" class="filters">
+
+            <div>
+                <label>From Date</label>
+                <input
+                    type="date"
+                    name="from_date"
+                    value="{{ from_date }}"
+                >
+            </div>
+
+            <div>
+                <label>To Date</label>
+                <input
+                    type="date"
+                    name="to_date"
+                    value="{{ to_date }}"
+                >
+            </div>
+
+            <div>
+                <label>Product</label>
+
+                <select name="product">
+                    <option value="">All Products</option>
+
+                    {% for product in products %}
+                        <option
+                            value="{{ product.pk }}"
+                            {% if selected_product == product.pk|stringformat:"s" %}
+                                selected
+                            {% endif %}
+                        >
+                            {{ product.name }} ({{ product.sku }})
+                        </option>
+                    {% endfor %}
+
+                </select>
+            </div>
+
+            <button type="submit">
+    Generate Report
+</button>
+
+<button
+    type="submit"
+    class="excel-btn"
+    formaction="{% url 'reporting:stock_movement_export_excel' %}">
+    Download Excel
+</button>
+
+<button
+    type="submit"
+    class="pdf-btn"
+    formaction="{% url 'reporting:stock_movement_export_pdf' %}">
+    Download PDF
+</button>
+
+<a href="{% url 'reporting:stock_movement_report' %}">
+    Clear Filters
+</a>
+        </form>
+
+    </div>
+
+    {% for error in errors %}
+        <div class="error">{{ error }}</div>
+    {% endfor %}
+
+    <div class="panel">
+
+        <h2>Stock Summary</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>SKU</th>
+                        <th>Unit</th>
+                        <th>Opening</th>
+                        <th>Incoming</th>
+                        <th>Outgoing</th>
+                        <th>Closing</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for item in summaries %}
+
+                    <tr>
+                        <td>{{ item.product.name }}</td>
+                        <td>{{ item.product.sku }}</td>
+                        <td>{{ item.unit_label }}</td>
+
+                        <td>{{ item.opening|floatformat:3 }}</td>
+
+                        <td class="positive">
+                            {{ item.incoming|floatformat:3 }}
+                        </td>
+
+                        <td class="negative">
+                            {{ item.outgoing|floatformat:3 }}
+                        </td>
+
+                        <td>
+                            <strong>
+                                {{ item.closing|floatformat:3 }}
+                            </strong>
+                        </td>
+                    </tr>
+
+                    {% empty %}
+
+                    <tr>
+                        <td colspan="7">No product records found.</td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+            </table>
+
+        </div>
+
+    </div>
+
+    <div class="panel">
+
+        <h2>Detailed Stock Movement Ledger</h2>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Date and Time</th>
+                        <th>Product</th>
+                        <th>Movement</th>
+                        <th>Quantity</th>
+                        <th>Unit</th>
+                        <th>Reference</th>
+                        <th>Created By</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    {% for movement in movements %}
+
+                    <tr>
+
+                        <td>
+                            {{ movement.created_at|date:"d-m-Y H:i" }}
+                        </td>
+
+                        <td>{{ movement.product.name }}</td>
+
+                        <td>
+                            {{ movement.get_movement_type_display }}
+                        </td>
+
+                        <td>
+                            {{ movement.quantity|floatformat:3 }}
+                        </td>
+
+                        <td>{{ movement.unit.symbol }}</td>
+
+                        <td>
+                            {{ movement.reference_type }}
+                            /
+                            {{ movement.reference_number }}
+                        </td>
+
+                        <td>{{ movement.created_by.username }}</td>
+
+                    </tr>
+
+                    {% empty %}
+
+                    <tr>
+                        <td colspan="7">
+                            No movements found for this period.
+                        </td>
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+</html>
