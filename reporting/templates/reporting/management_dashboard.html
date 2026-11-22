@@ -292,6 +292,29 @@
 
         <h1>Management Audit Dashboard</h1>
 
+<form method="post"
+      action="{% url 'logout' %}"
+      style="display: inline;">
+
+    {% csrf_token %}
+
+    <button type="submit"
+            style="
+                background: #dc3545;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                margin-top: 12px;
+            ">
+        Logout
+    </button>
+
+</form>
+
+
         <p>
             Centralized business overview of inventory,
             raw materials, production, sales and finance.

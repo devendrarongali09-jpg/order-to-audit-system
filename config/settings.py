@@ -42,7 +42,39 @@ ALLOWED_HOSTS = [
     ).split(",")
     if host.strip()
 ]
+# =========================================
+# SECURITY SETTINGS
+# =========================================
 
+def env_bool(name, default=False):
+    return os.getenv(name, str(default)).lower() in (
+        "true", "1", "yes", "on"
+    )
+
+
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT")
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE")
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE")
+
+SECURE_HSTS_SECONDS = int(
+    os.getenv("SECURE_HSTS_SECONDS", "0")
+)
+
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
+    "SECURE_HSTS_INCLUDE_SUBDOMAINS"
+)
+
+SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD")
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CSRF_TRUSTED_ORIGINS", ""
+    ).split(",")
+    if origin.strip()
+]
+
+SECURE_CONTENT_TYPE_NOSNIFF = True
 # Application definition
 
 INSTALLED_APPS = [
@@ -132,7 +164,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Kolkata'
 
 USE_I18N = True
 
@@ -142,14 +174,58 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = 'static/'
+# Static files
+
+STATIC_URL = '/static/'
+
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}
+# =========================================
+# EMAIL CONFIGURATION
+# =========================================
+
+if DEBUG:
+
+    # Development: display emails in terminal.
+    MAILERS = {
+        "default": {
+            "BACKEND": (
+                "django.core.mail.backends.console.EmailBackend"
+            ),
+        },
+    }
+
+else:
+
+    # Production: use authenticated SMTP.
+    MAILERS = {
+        "default": {
+            "BACKEND": (
+                "django.core.mail.backends.smtp.EmailBackend"
+            ),
+            "OPTIONS": {
+                "host": os.getenv("EMAIL_HOST", ""),
+                "port": int(os.getenv("EMAIL_PORT", "587")),
+                "username": os.getenv("EMAIL_HOST_USER", ""),
+                "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
+                "use_tls": env_bool("EMAIL_USE_TLS", True),
+                "timeout": 20,
+            },
+        },
+    }
+
+DEFAULT_FROM_EMAIL = os.getenv(
+    "DEFAULT_FROM_EMAIL",
+    "webmaster@localhost"
+)
+# Authentication redirects
+
+LOGIN_URL = "/accounts/login/"
+
+LOGIN_REDIRECT_URL = "/reports/management-dashboard/"
+
+LOGOUT_REDIRECT_URL = "/accounts/login/"
