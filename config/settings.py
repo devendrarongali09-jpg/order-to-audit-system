@@ -43,6 +43,24 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 # =========================================
+# SELLER / GST CONFIGURATION
+# =========================================
+
+SELLER_LEGAL_NAME = os.getenv(
+    "SELLER_LEGAL_NAME",
+    "Demo Food Manufacturer"
+).strip()
+
+SELLER_GSTIN = os.getenv(
+    "SELLER_GSTIN",
+    ""
+).strip().upper()
+
+SELLER_STATE_CODE = os.getenv(
+    "SELLER_STATE_CODE",
+    "33"
+).strip()
+# =========================================
 # SECURITY SETTINGS
 # =========================================
 

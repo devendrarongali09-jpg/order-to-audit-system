@@ -5672,3 +5672,323 @@ def gst_outward_export_pdf(request):
     document.build(elements)
 
     return response
+
+# -----------------------------------------------------------------------------
+# Customer outstanding ageing report
+# -----------------------------------------------------------------------------
+
+def _outstanding_ageing_data(as_of_date):
+    """Build invoice-wise and customer-wise outstanding ageing as of a date.
+
+    Age is measured from invoice_date because the current Invoice model has no
+    contractual due_date field. Only currently received payments dated on or
+    before as_of_date are deducted. Reversed payments are excluded.
+    """
+    zero = Decimal("0.00")
+    bucket_definitions = (
+        ("0_30", "0–30 days"),
+        ("31_60", "31–60 days"),
+        ("61_90", "61–90 days"),
+        ("over_90", "Above 90 days"),
+    )
+    bucket_totals = {key: zero for key, _label in bucket_definitions}
+    customer_totals = {}
+    rows = []
+    total_outstanding = zero
+
+    invoices = (
+        Invoice.objects
+        .filter(
+            status=Invoice.Status.ISSUED,
+            invoice_date__lte=as_of_date,
+        )
+        .prefetch_related("payments")
+        .order_by("customer_name", "invoice_date", "invoice_number")
+    )
+
+    for invoice in invoices:
+        paid_as_of_date = sum(
+            (
+                payment.amount
+                for payment in invoice.payments.all()
+                if payment.status == Payment.Status.RECEIVED
+                and payment.payment_date <= as_of_date
+            ),
+            zero,
+        )
+        balance_due = max(zero, invoice.grand_total - paid_as_of_date)
+
+        if balance_due <= zero:
+            continue
+
+        age_days = (as_of_date - invoice.invoice_date).days
+        if age_days <= 30:
+            bucket_key, bucket_label = bucket_definitions[0]
+        elif age_days <= 60:
+            bucket_key, bucket_label = bucket_definitions[1]
+        elif age_days <= 90:
+            bucket_key, bucket_label = bucket_definitions[2]
+        else:
+            bucket_key, bucket_label = bucket_definitions[3]
+
+        row = {
+            "customer_name": invoice.customer_name,
+            "invoice_number": invoice.invoice_number,
+            "invoice_date": invoice.invoice_date,
+            "age_days": age_days,
+            "invoice_amount": invoice.grand_total,
+            "amount_paid": paid_as_of_date,
+            "balance_due": balance_due,
+            "bucket_key": bucket_key,
+            "bucket_label": bucket_label,
+        }
+        rows.append(row)
+
+        if invoice.customer_name not in customer_totals:
+            customer_totals[invoice.customer_name] = {
+                "customer_name": invoice.customer_name,
+                "invoice_count": 0,
+                "bucket_totals": {key: zero for key, _label in bucket_definitions},
+                "total_outstanding": zero,
+            }
+
+        customer_row = customer_totals[invoice.customer_name]
+        customer_row["invoice_count"] += 1
+        customer_row["bucket_totals"][bucket_key] += balance_due
+        customer_row["total_outstanding"] += balance_due
+        bucket_totals[bucket_key] += balance_due
+        total_outstanding += balance_due
+
+    customer_summary = sorted(
+        customer_totals.values(),
+        key=lambda item: item["customer_name"].casefold(),
+    )
+
+    totals = {
+        "invoice_count": len(rows),
+        "total_outstanding": total_outstanding,
+        "bucket_totals": bucket_totals,
+    }
+
+    return {
+        "as_of_date": as_of_date,
+        "rows": rows,
+        "customer_summary": customer_summary,
+        "totals": totals,
+        "bucket_definitions": bucket_definitions,
+    }
+
+
+def _outstanding_ageing_request_data(request):
+    raw_as_of_date = request.GET.get("as_of_date", "").strip()
+    if raw_as_of_date:
+        as_of_date = parse_date(raw_as_of_date)
+        if as_of_date is None:
+            return None, HttpResponseBadRequest("Invalid as-of date. Use YYYY-MM-DD.")
+    else:
+        as_of_date = timezone.localdate()
+    return _outstanding_ageing_data(as_of_date), None
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def outstanding_ageing_report(request):
+    data, error_response = _outstanding_ageing_request_data(request)
+    if error_response:
+        return error_response
+
+    return render(
+        request,
+        "reporting/outstanding_ageing_report.html",
+        data,
+    )
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def outstanding_ageing_export_excel(request):
+    data, error_response = _outstanding_ageing_request_data(request)
+    if error_response:
+        return error_response
+
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "Customer Summary"
+    summary_sheet.append(["Outstanding Ageing as of", data["as_of_date"].isoformat()])
+    summary_sheet.append([])
+    summary_headers = [
+        "Customer",
+        "Open Invoice Count",
+        "0–30 Days",
+        "31–60 Days",
+        "61–90 Days",
+        "Above 90 Days",
+        "Total Outstanding",
+    ]
+    summary_sheet.append(summary_headers)
+
+    for customer in data["customer_summary"]:
+        summary_sheet.append([
+            customer["customer_name"],
+            customer["invoice_count"],
+            customer["bucket_totals"]["0_30"],
+            customer["bucket_totals"]["31_60"],
+            customer["bucket_totals"]["61_90"],
+            customer["bucket_totals"]["over_90"],
+            customer["total_outstanding"],
+        ])
+
+    summary_sheet.append([
+        "TOTAL",
+        data["totals"]["invoice_count"],
+        data["totals"]["bucket_totals"]["0_30"],
+        data["totals"]["bucket_totals"]["31_60"],
+        data["totals"]["bucket_totals"]["61_90"],
+        data["totals"]["bucket_totals"]["over_90"],
+        data["totals"]["total_outstanding"],
+    ])
+
+    detail_sheet = workbook.create_sheet("Invoice Ageing")
+    detail_sheet.append([
+        "Customer",
+        "Invoice Number",
+        "Invoice Date",
+        "Age (Days)",
+        "Invoice Value",
+        "Paid as of Date",
+        "Outstanding",
+        "Ageing Bucket",
+    ])
+    for row in data["rows"]:
+        detail_sheet.append([
+            row["customer_name"],
+            row["invoice_number"],
+            row["invoice_date"],
+            row["age_days"],
+            row["invoice_amount"],
+            row["amount_paid"],
+            row["balance_due"],
+            row["bucket_label"],
+        ])
+
+    header_fill = PatternFill(fill_type="solid", fgColor="315B73")
+    header_font = Font(bold=True, color="FFFFFF")
+    for sheet, header_row in ((summary_sheet, 3), (detail_sheet, 1)):
+        for cell in sheet[header_row]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+        sheet.freeze_panes = f"A{header_row + 1}"
+        sheet.auto_filter.ref = (
+            f"A{header_row}:{sheet.cell(sheet.max_row, sheet.max_column).coordinate}"
+            if sheet.max_row >= header_row
+            else None
+        )
+        for column in sheet.columns:
+            letter = column[0].column_letter
+            max_length = max(len(str(cell.value or "")) for cell in column)
+            sheet.column_dimensions[letter].width = min(max(max_length + 3, 14), 34)
+
+    for row_number in range(4, summary_sheet.max_row + 1):
+        for column_number in range(3, 8):
+            summary_sheet.cell(row_number, column_number).number_format = '₹#,##0.00'
+
+    for row_number in range(2, detail_sheet.max_row + 1):
+        detail_sheet.cell(row_number, 3).number_format = "dd-mmm-yyyy"
+        for column_number in range(5, 8):
+            detail_sheet.cell(row_number, column_number).number_format = '₹#,##0.00'
+
+    output = BytesIO()
+    workbook.save(output)
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="outstanding_ageing_{data["as_of_date"].isoformat()}.xlsx"'
+    )
+    return response
+
+
+@group_required("Factory Admin", "Accountant/Auditor", "Owner")
+def outstanding_ageing_export_pdf(request):
+    data, error_response = _outstanding_ageing_request_data(request)
+    if error_response:
+        return error_response
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="outstanding_ageing_{data["as_of_date"].isoformat()}.pdf"'
+    )
+
+    document = SimpleDocTemplate(
+        response,
+        pagesize=landscape(A4),
+        rightMargin=8 * mm,
+        leftMargin=8 * mm,
+        topMargin=10 * mm,
+        bottomMargin=10 * mm,
+    )
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("Customer Outstanding Ageing Report", styles["Title"]),
+        Paragraph(f"As of: {data['as_of_date'].strftime('%d-%m-%Y')}", styles["Normal"]),
+        Spacer(1, 5 * mm),
+    ]
+
+    summary_data = [["Ageing Bucket", "Outstanding (Rs.)"]]
+    for key, label in data["bucket_definitions"]:
+        summary_data.append([
+            label,
+            f"{data['totals']['bucket_totals'][key]:,.2f}",
+        ])
+    summary_data.append(["TOTAL OUTSTANDING", f"{data['totals']['total_outstanding']:,.2f}"])
+    summary_table = Table(summary_data, colWidths=[65 * mm, 45 * mm])
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#315B73")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("ALIGN", (1, 1), (1, -1), "RIGHT"),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8EEF2")),
+        ("PADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.extend([summary_table, Spacer(1, 6 * mm), Paragraph("Invoice-wise Outstanding", styles["Heading2"])])
+
+    detail_data = [[
+        "Customer", "Invoice", "Invoice Date", "Age", "Invoice Value",
+        "Paid", "Outstanding", "Ageing Bucket",
+    ]]
+    for row in data["rows"]:
+        detail_data.append([
+            Paragraph(escape(row["customer_name"]), styles["Normal"]),
+            Paragraph(escape(row["invoice_number"]), styles["Normal"]),
+            row["invoice_date"].strftime("%d-%m-%Y"),
+            str(row["age_days"]),
+            f"{row['invoice_amount']:,.2f}",
+            f"{row['amount_paid']:,.2f}",
+            f"{row['balance_due']:,.2f}",
+            row["bucket_label"],
+        ])
+
+    if len(detail_data) == 1:
+        detail_data.append(["No outstanding invoices as of this date.", "", "", "", "", "", "", ""])
+
+    detail_table = LongTable(
+        detail_data,
+        repeatRows=1,
+        colWidths=[42 * mm, 33 * mm, 25 * mm, 13 * mm, 34 * mm, 30 * mm, 34 * mm, 38 * mm],
+    )
+    detail_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#315B73")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
+        ("ALIGN", (3, 1), (6, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F6F8")]),
+        ("PADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(detail_table)
+    document.build(story)
+    return response

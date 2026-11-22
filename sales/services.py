@@ -1,6 +1,6 @@
 
 from decimal import Decimal, ROUND_HALF_UP
-
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Sum
@@ -197,10 +197,27 @@ def generate_invoice(
     *,
     order_id,
     user,
-    seller_name="Demo Food Manufacturer",
-    seller_gstin="",
-    seller_state_code="33"
+    seller_name=None,
+    seller_gstin=None,
+    seller_state_code=None
 ):
+    seller_name = (
+        settings.SELLER_LEGAL_NAME
+        if seller_name is None
+        else seller_name
+    )
+
+    seller_gstin = (
+        settings.SELLER_GSTIN
+        if seller_gstin is None
+        else seller_gstin
+    )
+
+    seller_state_code = (
+        settings.SELLER_STATE_CODE
+        if seller_state_code is None
+        else seller_state_code
+    )
 
     order = SalesOrder.objects.select_for_update().get(
         pk=order_id

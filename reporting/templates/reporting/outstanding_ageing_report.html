@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Outstanding Ageing</title>
+    <style>
+        :root { color-scheme: light; }
+        body { margin: 0; padding: 24px; background: #f4f7f9; color: #24323b; font-family: Arial, sans-serif; }
+        main { max-width: 1200px; margin: 0 auto; }
+        h1 { margin-bottom: 6px; color: #24485c; }
+        h2 { margin-top: 30px; color: #24485c; font-size: 20px; }
+        .muted { color: #667781; }
+        .toolbar, .panel { background: #fff; border: 1px solid #dce4e9; border-radius: 10px; padding: 18px; margin: 18px 0; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+        label { display: block; font-size: 13px; margin-bottom: 6px; color: #53636d; }
+        input, button, .link-button { min-height: 38px; box-sizing: border-box; border-radius: 6px; padding: 8px 12px; font-size: 14px; }
+        input { border: 1px solid #b9c7cf; }
+        button, .link-button { display: inline-flex; align-items: center; justify-content: center; border: 0; background: #315b73; color: white; text-decoration: none; cursor: pointer; }
+        .link-button.secondary { background: #e8eef2; color: #24485c; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 18px 0; }
+        .card { background: white; border: 1px solid #dce4e9; border-radius: 10px; padding: 16px; }
+        .card .label { display: block; color: #667781; font-size: 13px; margin-bottom: 8px; }
+        .card strong { font-size: 20px; color: #24485c; }
+        .table-wrap { overflow-x: auto; background: #fff; border: 1px solid #dce4e9; border-radius: 10px; }
+        table { width: 100%; border-collapse: collapse; min-width: 760px; }
+        th, td { padding: 11px 12px; border-bottom: 1px solid #e5ebef; text-align: left; font-size: 13px; }
+        th { background: #315b73; color: #fff; white-space: nowrap; }
+        td.numeric, th.numeric { text-align: right; white-space: nowrap; }
+        tbody tr:nth-child(even) { background: #f7f9fa; }
+        tfoot td { font-weight: bold; background: #eaf0f3; }
+        @media (max-width: 600px) { body { padding: 12px; } .toolbar { align-items: stretch; } .toolbar > div { width: 100%; } .toolbar a, .toolbar button { width: 100%; } }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Customer Outstanding Ageing</h1>
+    <p class="muted">Open issued invoices grouped by age from the invoice date. Reversed payments are excluded.</p>
+
+    <form class="toolbar" method="get">
+        <div>
+            <label for="as_of_date">Ageing as of date</label>
+            <input id="as_of_date" type="date" name="as_of_date" value="{{ as_of_date|date:'Y-m-d' }}">
+        </div>
+        <button type="submit">Apply date</button>
+        <a class="link-button secondary" href="{% url 'reporting:outstanding_ageing_export_excel' %}?as_of_date={{ as_of_date|date:'Y-m-d' }}">Download Excel</a>
+        <a class="link-button secondary" href="{% url 'reporting:outstanding_ageing_export_pdf' %}?as_of_date={{ as_of_date|date:'Y-m-d' }}">Download PDF</a>
+    </form>
+
+    <section class="cards">
+        <div class="card"><span class="label">Total outstanding</span><strong>₹{{ totals.total_outstanding|floatformat:2 }}</strong></div>
+        <div class="card"><span class="label">Open invoices</span><strong>{{ totals.invoice_count }}</strong></div>
+        <div class="card"><span class="label">0–30 days</span><strong>₹{{ totals.bucket_totals.0_30|floatformat:2 }}</strong></div>
+        <div class="card"><span class="label">31–60 days</span><strong>₹{{ totals.bucket_totals.31_60|floatformat:2 }}</strong></div>
+        <div class="card"><span class="label">61–90 days</span><strong>₹{{ totals.bucket_totals.61_90|floatformat:2 }}</strong></div>
+        <div class="card"><span class="label">Above 90 days</span><strong>₹{{ totals.bucket_totals.over_90|floatformat:2 }}</strong></div>
+    </section>
+
+    <h2>Customer summary</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr>
+                <th>Customer</th><th class="numeric">Open invoices</th>
+                <th class="numeric">0–30 days</th><th class="numeric">31–60 days</th>
+                <th class="numeric">61–90 days</th><th class="numeric">Above 90 days</th>
+                <th class="numeric">Total outstanding</th>
+            </tr></thead>
+            <tbody>
+            {% for customer in customer_summary %}
+                <tr>
+                    <td>{{ customer.customer_name }}</td>
+                    <td class="numeric">{{ customer.invoice_count }}</td>
+                    <td class="numeric">₹{{ customer.bucket_totals.0_30|floatformat:2 }}</td>
+                    <td class="numeric">₹{{ customer.bucket_totals.31_60|floatformat:2 }}</td>
+                    <td class="numeric">₹{{ customer.bucket_totals.61_90|floatformat:2 }}</td>
+                    <td class="numeric">₹{{ customer.bucket_totals.over_90|floatformat:2 }}</td>
+                    <td class="numeric">₹{{ customer.total_outstanding|floatformat:2 }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="7">No outstanding balances as of this date.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h2>Invoice-wise details</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr>
+                <th>Customer</th><th>Invoice number</th><th>Invoice date</th>
+                <th class="numeric">Age (days)</th><th class="numeric">Invoice value</th>
+                <th class="numeric">Paid as of date</th><th class="numeric">Outstanding</th><th>Ageing bucket</th>
+            </tr></thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.customer_name }}</td>
+                    <td>{{ row.invoice_number }}</td>
+                    <td>{{ row.invoice_date|date:'d-m-Y' }}</td>
+                    <td class="numeric">{{ row.age_days }}</td>
+                    <td class="numeric">₹{{ row.invoice_amount|floatformat:2 }}</td>
+                    <td class="numeric">₹{{ row.amount_paid|floatformat:2 }}</td>
+                    <td class="numeric">₹{{ row.balance_due|floatformat:2 }}</td>
+                    <td>{{ row.bucket_label }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8">No outstanding invoices as of this date.</td></tr>
+            {% endfor %}
+            </tbody>
+            {% if rows %}
+            <tfoot><tr>
+                <td colspan="6">Total outstanding</td>
+                <td class="numeric">₹{{ totals.total_outstanding|floatformat:2 }}</td>
+                <td></td>
+            </tr></tfoot>
+            {% endif %}
+        </table>
+    </div>
+</main>
+</body>
+</html>

@@ -104,4 +104,20 @@ path(
     views.gst_outward_export_pdf,
     name="gst_outward_export_pdf",
 ),
+
+    path(
+        "outstanding-ageing/",
+        views.outstanding_ageing_report,
+        name="outstanding_ageing_report",
+    ),
+    path(
+        "outstanding-ageing/export/excel/",
+        views.outstanding_ageing_export_excel,
+        name="outstanding_ageing_export_excel",
+    ),
+    path(
+        "outstanding-ageing/export/pdf/",
+        views.outstanding_ageing_export_pdf,
+        name="outstanding_ageing_export_pdf",
+    ),
 ]
