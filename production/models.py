@@ -371,3 +371,53 @@ class ProductionCost(models.Model):
 
     def __str__(self):
         return f"Costing - {self.production_run.run_number}"
+
+class ProductionRunAuditLog(models.Model):
+
+    class Action(models.TextChoices):
+        CREATED = "created", "Created"
+        UPDATED = "updated", "Updated"
+        POSTED = "posted", "Posted"
+
+    production_run = models.ForeignKey(
+        ProductionRun,
+        on_delete=models.PROTECT,
+        related_name="audit_logs"
+    )
+
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices
+    )
+
+    previous_values = models.JSONField(
+        default=dict,
+        blank=True
+    )
+
+    new_values = models.JSONField(
+        default=dict,
+        blank=True
+    )
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="production_run_audit_logs"
+    )
+
+    changed_at = models.DateTimeField(
+        default=timezone.now,
+        editable=False
+    )
+
+    class Meta:
+        ordering = ["-changed_at", "-id"]
+        verbose_name = "Production Run Audit Log"
+        verbose_name_plural = "Production Run Audit Logs"
+
+    def __str__(self):
+        return (
+            f"{self.production_run.run_number} - "
+            f"{self.get_action_display()}"
+        )

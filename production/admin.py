@@ -9,8 +9,10 @@ from .models import (
     ProductRecipe,
     ProductionRun,
     ProductionConsumption,
-    ProductionCost
+    ProductionCost,
+    ProductionRunAuditLog
 )
+from .audit import snapshot_production_run
 
 from .services import (
     initialize_production_consumptions,
@@ -118,24 +120,59 @@ class ProductionRunAdmin(admin.ModelAdmin):
 
     actions = ["post_selected_runs"]
 
-    def save_model(self, request, obj, form, change):
+    def has_change_permission(self, request, obj=None):
+        if obj and obj.status == ProductionRun.Status.POSTED:
+            return False
 
-        if not change:
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.status == ProductionRun.Status.POSTED:
+            return False
+
+        return super().has_delete_permission(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        request._production_run_audit_previous = None
+
+        if change:
+            previous_run = ProductionRun.objects.get(pk=obj.pk)
+            request._production_run_audit_previous = (
+                snapshot_production_run(previous_run)
+            )
+        else:
             obj.created_by = request.user
 
         super().save_model(request, obj, form, change)
 
     def save_related(self, request, form, formsets, change):
-
         super().save_related(request, form, formsets, change)
 
         run = form.instance
 
         if not run.consumptions.exists():
-
             initialize_production_consumptions(
                 production_run_id=run.pk
             )
+
+        previous = request._production_run_audit_previous
+        current = snapshot_production_run(run)
+
+        if not change:
+            action = ProductionRunAuditLog.Action.CREATED
+            previous = {}
+        elif previous != current:
+            action = ProductionRunAuditLog.Action.UPDATED
+        else:
+            return
+
+        ProductionRunAuditLog.objects.create(
+            production_run=run,
+            action=action,
+            previous_values=previous or {},
+            new_values=current,
+            changed_by=request.user,
+        )
 
     @admin.action(
         description="Post selected production runs to stock"
@@ -236,3 +273,38 @@ class ProductionCostAdmin(admin.ModelAdmin):
                     f"Cost per packet ₹{result.cost_per_packet}",
                     level=messages.SUCCESS
                 )
+
+@admin.register(ProductionRunAuditLog)
+class ProductionRunAuditLogAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "production_run",
+        "action",
+        "changed_by",
+        "changed_at",
+    )
+
+    list_filter = ("action", "changed_at")
+
+    search_fields = (
+        "production_run__run_number",
+        "changed_by__username",
+    )
+
+    readonly_fields = (
+        "production_run",
+        "action",
+        "previous_values",
+        "new_values",
+        "changed_by",
+        "changed_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

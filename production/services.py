@@ -9,13 +9,15 @@ from django.utils import timezone
 from inventory.models import StockMovement
 from inventory.services import get_stock_balance
 from .models import ProductionCost
-from inventory.models import StockMovement
 
 from .models import (
     ProductionRun,
     ProductionConsumption,
-    BOMItem
+    ProductionCost,
+    ProductionRunAuditLog,
+    BOMItem,
 )
+from .audit import snapshot_production_run
 
 
 @transaction.atomic
@@ -65,12 +67,14 @@ def initialize_production_consumptions(*, production_run_id):
     return run
 
 
+
 @transaction.atomic
 def post_production_run(*, production_run_id, user):
 
     run = ProductionRun.objects.select_for_update().get(
         pk=production_run_id
     )
+    previous_snapshot = snapshot_production_run(run)
 
     if run.status != ProductionRun.Status.DRAFT:
         raise ValidationError(
@@ -188,10 +192,19 @@ def post_production_run(*, production_run_id, user):
     run.posted_at = timezone.now()
 
     run.save(
-        update_fields=["status", "posted_at"]
-    )
+    update_fields=["status", "posted_at"]
+)
+
+    ProductionRunAuditLog.objects.create(
+       production_run=run,
+       action=ProductionRunAuditLog.Action.POSTED,
+       previous_values=previous_snapshot,
+       new_values=snapshot_production_run(run),
+       changed_by=user,
+)
 
     return run
+
 
 @transaction.atomic
 def calculate_production_cost(*, cost_record_id):
