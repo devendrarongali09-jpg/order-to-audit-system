@@ -987,20 +987,16 @@ def raw_material_movement_report(request):
         movements = list(period_queryset)
 
         for movement in movements:
-
             summary = summaries[movement.raw_material_id]
 
-        if movement.movement_type == StockMovement.MovementType.OPENING_IN:
+            if movement.movement_type == StockMovement.MovementType.OPENING_IN:
+                summary["opening"] += movement.quantity
 
-         summary["opening"] += movement.quantity
+            elif movement.movement_type in INCOMING_TYPES:
+                summary["incoming"] += movement.quantity
 
-        elif movement.movement_type in INCOMING_TYPES:
-
-         summary["incoming"] += movement.quantity
-
-        elif movement.movement_type in OUTGOING_TYPES:
-
-         summary["outgoing"] += movement.quantity
+            elif movement.movement_type in OUTGOING_TYPES:
+                summary["outgoing"] += movement.quantity
 
         # Calculate closing stock.
         for summary in summaries.values():
