@@ -1,5 +1,7 @@
 from uuid import uuid4
 from decimal import Decimal
+from django.db.models import Sum
+from django.utils.dateparse import parse_date
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -11,8 +13,20 @@ from accounts.decorators import group_required
 from inventory.services import get_stock_balance
 from masterdata.models import Customer, Product
 
-from .models import Invoice, SalesOrder, SalesOrderItem
-from .services import check_order_stock, submit_order
+from .models import (
+    Invoice,
+    InvoiceLine,
+    SalesOrder,
+    SalesOrderItem,
+    CreditNote,
+    CreditNoteLine,
+)
+
+from .services import (
+    check_order_stock,
+    submit_order,
+    issue_credit_note,
+)
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -33,7 +47,6 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from .models import Invoice
 
 
 @staff_member_required
@@ -422,4 +435,193 @@ def salesman_new_order(request):
             "customers": customers,
             "product_options": product_options,
         }
+    )
+def _credit_note_form_rows(invoice, selected_quantities=None):
+    selected_quantities = selected_quantities or {}
+
+    credit_totals = (
+        CreditNoteLine.objects
+        .filter(invoice_line__invoice=invoice)
+        .values("invoice_line_id")
+        .annotate(
+            quantity=Sum("quantity"),
+            taxable=Sum("taxable_value"),
+            cgst=Sum("cgst_amount"),
+            sgst=Sum("sgst_amount"),
+            igst=Sum("igst_amount"),
+        )
+    )
+
+    credit_map = {
+        row["invoice_line_id"]: row
+        for row in credit_totals
+    }
+
+    rows = []
+
+    for line in invoice.lines.all():
+        previous = credit_map.get(line.pk, {})
+
+        credited_quantity = previous.get("quantity") or 0
+
+        rows.append({
+            "line": line,
+            "credited_quantity": credited_quantity,
+            "remaining_quantity": max(
+                0, line.quantity - credited_quantity
+            ),
+            "credited_taxable": previous.get("taxable") or Decimal("0.00"),
+            "credited_cgst": previous.get("cgst") or Decimal("0.00"),
+            "credited_sgst": previous.get("sgst") or Decimal("0.00"),
+            "credited_igst": previous.get("igst") or Decimal("0.00"),
+            "selected_quantity": selected_quantities.get(line.pk, 0),
+            "is_igst": (
+                invoice.seller_state_code
+                != invoice.place_of_supply_state_code
+            ),
+        })
+
+    return rows
+
+
+@group_required("Owner", "Factory Admin", "Accountant/Auditor")
+def credit_note_list(request):
+    can_issue = (
+        request.user.is_superuser
+        or request.user.groups.filter(
+            name__in=["Owner", "Factory Admin"]
+        ).exists()
+    )
+
+    invoices = Invoice.objects.filter(
+        status=Invoice.Status.ISSUED
+    ).order_by("-invoice_date", "-id") if can_issue else []
+
+    credit_notes = (
+        CreditNote.objects
+        .select_related("invoice", "created_by")
+        .order_by("-credit_note_date", "-id")[:100]
+    )
+
+    return render(
+        request,
+        "sales/credit_note_list.html",
+        {
+            "invoices": invoices,
+            "credit_notes": credit_notes,
+            "can_issue": can_issue,
+        },
+    )
+
+
+@group_required("Owner", "Factory Admin")
+def credit_note_create(request, invoice_id):
+    invoice = get_object_or_404(
+        Invoice.objects.prefetch_related("lines"),
+        pk=invoice_id,
+    )
+
+    if invoice.status != Invoice.Status.ISSUED:
+        messages.error(
+            request,
+            "Credit notes can only be issued for issued invoices.",
+        )
+        return redirect("sales:credit_note_list")
+
+    selected_quantities = {}
+    reason = ""
+    raw_date = timezone.localdate().isoformat()
+
+    if request.method == "POST":
+        reason = request.POST.get("reason", "").strip()
+        raw_date = request.POST.get("credit_note_date", "").strip()
+
+        raw_ids = request.POST.getlist("invoice_line_id")
+        raw_quantities = request.POST.getlist("quantity")
+
+        errors = []
+        requested_lines = []
+
+        if len(raw_ids) != len(raw_quantities):
+            errors.append("Invalid invoice line submission.")
+        else:
+            for raw_id, raw_quantity in zip(raw_ids, raw_quantities):
+                try:
+                    line_id = int(raw_id)
+                    quantity = int(raw_quantity or "0")
+                except (ValueError, TypeError):
+                    errors.append("Enter valid whole-number quantities.")
+                    continue
+
+                selected_quantities[line_id] = quantity
+
+                if quantity != 0:
+                    requested_lines.append({
+                        "invoice_line_id": line_id,
+                        "quantity": quantity,
+                    })
+
+        credit_date = parse_date(raw_date) if raw_date else None
+
+        if raw_date and credit_date is None:
+            errors.append("Enter a valid credit-note date.")
+
+        if not reason:
+            errors.append("A reason is required.")
+
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+        else:
+            try:
+                credit_note = issue_credit_note(
+                    invoice_id=invoice.pk,
+                    user=request.user,
+                    reason=reason,
+                    lines=requested_lines,
+                    credit_note_date=credit_date,
+                )
+
+            except ValidationError as exc:
+                for error in exc.messages:
+                    messages.error(request, error)
+
+            else:
+                messages.success(
+                    request,
+                    f"Credit note {credit_note.credit_note_number} issued successfully.",
+                )
+                return redirect(
+                    "sales:credit_note_detail",
+                    credit_note_id=credit_note.pk,
+                )
+
+    return render(
+        request,
+        "sales/credit_note_create.html",
+        {
+            "invoice": invoice,
+            "rows": _credit_note_form_rows(
+                invoice,
+                selected_quantities,
+            ),
+            "reason": reason,
+            "credit_note_date": raw_date,
+        },
+    )
+
+
+@group_required("Owner", "Factory Admin", "Accountant/Auditor")
+def credit_note_detail(request, credit_note_id):
+    credit_note = get_object_or_404(
+        CreditNote.objects
+        .select_related("invoice", "created_by")
+        .prefetch_related("lines"),
+        pk=credit_note_id,
+    )
+
+    return render(
+        request,
+        "sales/credit_note_detail.html",
+        {"credit_note": credit_note},
     )

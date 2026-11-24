@@ -255,7 +255,7 @@ class Invoice(models.Model):
     @property
     def amount_paid(self):
         total = self.payments.filter(
-            status="received"
+            status=Payment.Status.RECEIVED
         ).aggregate(
             total=Sum("amount")
         )["total"]
@@ -263,23 +263,50 @@ class Invoice(models.Model):
         return total or Decimal("0.00")
 
     @property
+    def amount_credited(self):
+        total = self.credit_notes.aggregate(
+            total=Sum("grand_total")
+        )["total"]
+
+        return total or Decimal("0.00")
+
+    @property
+    def net_total(self):
+        return max(
+            Decimal("0.00"),
+            self.grand_total - self.amount_credited
+        )
+
+    @property
+    def customer_credit(self):
+        return max(
+            Decimal("0.00"),
+            self.amount_paid - self.net_total
+        )
+
+    @property
     def balance_due(self):
         return max(
             Decimal("0.00"),
-            self.grand_total - self.amount_paid
+            self.net_total - self.amount_paid
         )
 
     @property
     def payment_status(self):
 
+        if self.amount_paid > self.net_total:
+            return "Customer Credit"
+
+        if self.net_total == 0:
+            return "Fully Credited"
+
         if self.amount_paid == 0:
             return "Unpaid"
 
-        if self.amount_paid < self.grand_total:
+        if self.amount_paid < self.net_total:
             return "Partially Paid"
 
         return "Paid"
-
 
 class InvoiceLine(models.Model):
 
@@ -341,6 +368,159 @@ class InvoiceLine(models.Model):
 
     def __str__(self):
         return f"{self.product_name} - {self.quantity}"
+
+
+class CreditNoteSequence(models.Model):
+
+    financial_year = models.CharField(
+        max_length=9,
+        unique=True
+    )
+
+    last_number = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return self.financial_year
+
+
+class CreditNote(models.Model):
+
+    credit_note_number = models.CharField(
+        max_length=40,
+        unique=True
+    )
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.PROTECT,
+        related_name="credit_notes"
+    )
+
+    credit_note_date = models.DateField()
+
+    reason = models.TextField()
+
+    taxable_value = models.DecimalField(
+        max_digits=14,
+        decimal_places=2
+    )
+
+    cgst_total = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
+
+    sgst_total = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
+
+    igst_total = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
+
+    grand_total = models.DecimalField(
+        max_digits=14,
+        decimal_places=2
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_credit_notes"
+    )
+
+    created_at = models.DateTimeField(
+        default=timezone.now,
+        editable=False
+    )
+
+    class Meta:
+        ordering = ["-credit_note_date", "-id"]
+
+    def __str__(self):
+        return self.credit_note_number
+
+
+class CreditNoteLine(models.Model):
+
+    credit_note = models.ForeignKey(
+        CreditNote,
+        on_delete=models.PROTECT,
+        related_name="lines"
+    )
+
+    invoice_line = models.ForeignKey(
+        InvoiceLine,
+        on_delete=models.PROTECT,
+        related_name="credit_note_lines"
+    )
+
+    product_name = models.CharField(max_length=150)
+
+    hsn_code = models.CharField(
+        max_length=8,
+        blank=True
+    )
+
+    quantity = models.PositiveIntegerField(
+    validators=[
+        MinValueValidator(1)
+    ]
+)
+    unit_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2
+    )
+
+    gst_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2
+    )
+
+    taxable_value = models.DecimalField(
+        max_digits=14,
+        decimal_places=2
+    )
+
+    cgst_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
+
+    sgst_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
+
+    igst_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
+
+    total_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["credit_note", "invoice_line"],
+                name="unique_invoice_line_per_credit_note"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.credit_note.credit_note_number} - {self.product_name}"
+
 
 class Payment(models.Model):
 
@@ -413,14 +593,14 @@ class Payment(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+
     class Meta:
         ordering = ["-payment_date", "-id"]
 
     def __str__(self):
-        return (
-            f"{self.invoice.invoice_number} - "
-            f"₹{self.amount}"
-        )
+        return f"{self.invoice.invoice_number} - {self.amount}"
+
+
 
 class Dispatch(models.Model):
 

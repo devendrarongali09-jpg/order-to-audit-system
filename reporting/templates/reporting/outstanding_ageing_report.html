@@ -23,7 +23,7 @@
         .card .label { display: block; color: #667781; font-size: 13px; margin-bottom: 8px; }
         .card strong { font-size: 20px; color: #24485c; }
         .table-wrap { overflow-x: auto; background: #fff; border: 1px solid #dce4e9; border-radius: 10px; }
-        table { width: 100%; border-collapse: collapse; min-width: 760px; }
+        table { width: 100%; border-collapse: collapse; min-width: 980px; }
         th, td { padding: 11px 12px; border-bottom: 1px solid #e5ebef; text-align: left; font-size: 13px; }
         th { background: #315b73; color: #fff; white-space: nowrap; }
         td.numeric, th.numeric { text-align: right; white-space: nowrap; }
@@ -87,32 +87,41 @@
     <div class="table-wrap">
         <table>
             <thead><tr>
-                <th>Customer</th><th>Invoice number</th><th>Invoice date</th>
-                <th class="numeric">Age (days)</th><th class="numeric">Invoice value</th>
-                <th class="numeric">Paid as of date</th><th class="numeric">Outstanding</th><th>Ageing bucket</th>
-            </tr></thead>
+    <th>Customer</th>
+    <th>Invoice number</th>
+    <th>Invoice date</th>
+    <th class="numeric">Age (days)</th>
+    <th class="numeric">Invoice value</th>
+    <th class="numeric">Credit notes</th>
+    <th class="numeric">Net invoice value</th>
+    <th class="numeric">Paid as of date</th>
+    <th class="numeric">Outstanding</th>
+    <th>Ageing bucket</th>
+</tr></thead>
             <tbody>
             {% for row in rows %}
                 <tr>
-                    <td>{{ row.customer_name }}</td>
-                    <td>{{ row.invoice_number }}</td>
-                    <td>{{ row.invoice_date|date:'d-m-Y' }}</td>
-                    <td class="numeric">{{ row.age_days }}</td>
-                    <td class="numeric">₹{{ row.invoice_amount|floatformat:2 }}</td>
-                    <td class="numeric">₹{{ row.amount_paid|floatformat:2 }}</td>
-                    <td class="numeric">₹{{ row.balance_due|floatformat:2 }}</td>
-                    <td>{{ row.bucket_label }}</td>
-                </tr>
+    <td>{{ row.customer_name }}</td>
+    <td>{{ row.invoice_number }}</td>
+    <td>{{ row.invoice_date|date:'d-m-Y' }}</td>
+    <td class="numeric">{{ row.age_days }}</td>
+    <td class="numeric">₹{{ row.invoice_amount|floatformat:2 }}</td>
+    <td class="numeric">₹{{ row.amount_credited|floatformat:2 }}</td>
+    <td class="numeric">₹{{ row.net_invoice_amount|floatformat:2 }}</td>
+    <td class="numeric">₹{{ row.amount_paid|floatformat:2 }}</td>
+    <td class="numeric">₹{{ row.balance_due|floatformat:2 }}</td>
+    <td>{{ row.bucket_label }}</td>
+</tr>
             {% empty %}
-                <tr><td colspan="8">No outstanding invoices as of this date.</td></tr>
+                <tr><td colspan="10">No outstanding invoices as of this date.</td></tr>
             {% endfor %}
             </tbody>
             {% if rows %}
-            <tfoot><tr>
-                <td colspan="6">Total outstanding</td>
-                <td class="numeric">₹{{ totals.total_outstanding|floatformat:2 }}</td>
-                <td></td>
-            </tr></tfoot>
+           <tfoot><tr>
+    <td colspan="8">Total outstanding</td>
+    <td class="numeric">₹{{ totals.total_outstanding|floatformat:2 }}</td>
+    <td></td>
+</tr></tfoot>
             {% endif %}
         </table>
     </div>

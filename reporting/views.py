@@ -5698,10 +5698,9 @@ def _outstanding_ageing_data(as_of_date):
             status=Invoice.Status.ISSUED,
             invoice_date__lte=as_of_date,
         )
-        .prefetch_related("payments")
+        .prefetch_related("payments", "credit_notes")
         .order_by("customer_name", "invoice_date", "invoice_number")
     )
-
     for invoice in invoices:
         paid_as_of_date = sum(
             (
@@ -5712,8 +5711,24 @@ def _outstanding_ageing_data(as_of_date):
             ),
             zero,
         )
-        balance_due = max(zero, invoice.grand_total - paid_as_of_date)
+        credited_as_of_date = sum(
+            (
+                credit_note.grand_total
+                for credit_note in invoice.credit_notes.all()
+                if credit_note.credit_note_date <= as_of_date
+            ),
+            zero,
+        )
 
+        net_invoice_amount = max(
+            zero,
+            invoice.grand_total - credited_as_of_date
+        )
+
+        balance_due = max(
+            zero,
+            net_invoice_amount - paid_as_of_date
+        )
         if balance_due <= zero:
             continue
 
@@ -5737,6 +5752,8 @@ def _outstanding_ageing_data(as_of_date):
             "balance_due": balance_due,
             "bucket_key": bucket_key,
             "bucket_label": bucket_label,
+            "amount_credited": credited_as_of_date,
+            "net_invoice_amount": net_invoice_amount,
         }
         rows.append(row)
 
@@ -5849,6 +5866,8 @@ def outstanding_ageing_export_excel(request):
         "Invoice Date",
         "Age (Days)",
         "Invoice Value",
+        "Credit Notes",
+        "Net Invoice Value",
         "Paid as of Date",
         "Outstanding",
         "Ageing Bucket",
@@ -5860,6 +5879,8 @@ def outstanding_ageing_export_excel(request):
             row["invoice_date"],
             row["age_days"],
             row["invoice_amount"],
+            row["amount_credited"],
+            row["net_invoice_amount"],
             row["amount_paid"],
             row["balance_due"],
             row["bucket_label"],
@@ -5943,7 +5964,7 @@ def outstanding_ageing_export_pdf(request):
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-        ("ALIGN", (1, 1), (1, -1), "RIGHT"),
+        ("ALIGN", (3, 1), (8, -1), "RIGHT"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8EEF2")),
         ("PADDING", (0, 0), (-1, -1), 5),
@@ -5951,9 +5972,36 @@ def outstanding_ageing_export_pdf(request):
     story.extend([summary_table, Spacer(1, 6 * mm), Paragraph("Invoice-wise Outstanding", styles["Heading2"])])
 
     detail_data = [[
-        "Customer", "Invoice", "Invoice Date", "Age", "Invoice Value",
-        "Paid", "Outstanding", "Ageing Bucket",
+        "Customer",
+        "Invoice",
+        "Invoice Date",
+        "Age",
+        "Invoice Value",
+        "Credit Notes",
+        "Net Invoice",
+        "Paid",
+        "Outstanding",
+        "Ageing Bucket",
     ]]
+
+    for row in data["rows"]:
+        detail_data.append([
+            Paragraph(escape(row["customer_name"]), styles["Normal"]),
+            Paragraph(escape(row["invoice_number"]), styles["Normal"]),
+            row["invoice_date"].strftime("%d-%m-%Y"),
+            str(row["age_days"]),
+            f"{row['invoice_amount']:,.2f}",
+            f"{row['amount_credited']:,.2f}",
+            f"{row['net_invoice_amount']:,.2f}",
+            f"{row['amount_paid']:,.2f}",
+            f"{row['balance_due']:,.2f}",
+            row["bucket_label"],
+        ])
+
+    if len(detail_data) == 1:
+        detail_data.append([
+            "No outstanding invoices as of this date."
+        ] + [""] * 9)
     for row in data["rows"]:
         detail_data.append([
             Paragraph(escape(row["customer_name"]), styles["Normal"]),
@@ -5972,7 +6020,18 @@ def outstanding_ageing_export_pdf(request):
     detail_table = LongTable(
         detail_data,
         repeatRows=1,
-        colWidths=[42 * mm, 33 * mm, 25 * mm, 13 * mm, 34 * mm, 30 * mm, 34 * mm, 38 * mm],
+        colWidths=[
+            38 * mm,
+            30 * mm,
+            23 * mm,
+            11 * mm,
+            25 * mm,
+            22 * mm,
+            25 * mm,
+            23 * mm,
+            27 * mm,
+            32 * mm,
+        ],
     )
     detail_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#315B73")),

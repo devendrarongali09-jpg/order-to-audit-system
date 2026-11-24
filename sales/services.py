@@ -16,6 +16,9 @@ from .models import (
     InvoiceSequence,
     Invoice,
     InvoiceLine,
+    CreditNoteSequence,
+    CreditNote,
+    CreditNoteLine,
     Payment,
     Dispatch,
     DispatchItem,
@@ -363,6 +366,409 @@ def generate_invoice(
     )
 
     return invoice
+@transaction.atomic
+def issue_credit_note(
+    *,
+    invoice_id,
+    user,
+    reason,
+    lines,
+    credit_note_date=None,
+):
+    """
+    Issue an immutable credit note against an issued invoice.
+
+    Each line must contain:
+        {
+            "invoice_line_id": <InvoiceLine ID>,
+            "quantity": <positive whole number>
+        }
+
+    Only Owner, Factory Admin, and superusers may issue credit notes.
+    """
+
+    zero = Decimal("0.00")
+
+    # --------------------------------------------------
+    # 1. Check authorization
+    # --------------------------------------------------
+
+    if not user or not user.is_authenticated:
+        raise PermissionDenied(
+            "Authentication is required to issue a credit note."
+        )
+
+    can_issue = (
+        user.is_superuser
+        or user.groups.filter(
+            name__in=["Owner", "Factory Admin"]
+        ).exists()
+    )
+
+    if not can_issue:
+        raise PermissionDenied(
+            "Only the Owner or Factory Admin can issue credit notes."
+        )
+
+    # --------------------------------------------------
+    # 2. Validate reason and date
+    # --------------------------------------------------
+
+    reason = (reason or "").strip()
+
+    if not reason:
+        raise ValidationError(
+            "A reason is required to issue a credit note."
+        )
+
+    if credit_note_date is None:
+        credit_note_date = timezone.localdate()
+
+    if credit_note_date > timezone.localdate():
+        raise ValidationError(
+            "A credit note date cannot be in the future."
+        )
+
+    # --------------------------------------------------
+    # 3. Validate submitted invoice lines
+    # --------------------------------------------------
+
+    if not lines:
+        raise ValidationError(
+            "At least one invoice line must be credited."
+        )
+
+    requested_quantities = {}
+
+    for entry in lines:
+
+        if not isinstance(entry, dict):
+            raise ValidationError(
+                "Each credit-note line must contain an invoice line ID and quantity."
+            )
+
+        try:
+            invoice_line_id = int(entry["invoice_line_id"])
+            quantity_value = Decimal(str(entry["quantity"]))
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            raise ValidationError(
+                "Invalid invoice line ID or quantity."
+            )
+
+        if invoice_line_id <= 0:
+            raise ValidationError("Invalid invoice line ID.")
+
+        if (
+            not quantity_value.is_finite()
+            or quantity_value <= 0
+            or quantity_value != quantity_value.to_integral_value()
+        ):
+            raise ValidationError(
+                "Credit-note quantities must be positive whole numbers."
+            )
+
+        if invoice_line_id in requested_quantities:
+            raise ValidationError(
+                "An invoice line cannot appear more than once in one credit note."
+            )
+
+        requested_quantities[invoice_line_id] = int(quantity_value)
+
+    # --------------------------------------------------
+    # 4. Lock invoice to prevent concurrent over-credit
+    # --------------------------------------------------
+
+    invoice = Invoice.objects.select_for_update().get(
+        pk=invoice_id
+    )
+
+    if invoice.status != Invoice.Status.ISSUED:
+        raise ValidationError(
+            "Credit notes can only be issued against issued invoices."
+        )
+
+    if credit_note_date < invoice.invoice_date:
+        raise ValidationError(
+            "Credit note date cannot be earlier than the invoice date."
+        )
+
+    # --------------------------------------------------
+    # 5. Lock and validate the requested invoice lines
+    # --------------------------------------------------
+
+    invoice_lines = list(
+        InvoiceLine.objects
+        .select_for_update()
+        .filter(
+            invoice=invoice,
+            pk__in=requested_quantities.keys()
+        )
+        .order_by("pk")
+    )
+
+    if len(invoice_lines) != len(requested_quantities):
+        raise ValidationError(
+            "One or more selected invoice lines do not belong to this invoice."
+        )
+
+    # --------------------------------------------------
+    # 6. Retrieve quantities and amounts already credited
+    # --------------------------------------------------
+
+    previous_credit_rows = (
+        CreditNoteLine.objects
+        .filter(
+            invoice_line_id__in=requested_quantities.keys()
+        )
+        .values("invoice_line_id")
+        .annotate(
+            credited_quantity=Sum("quantity"),
+            credited_taxable=Sum("taxable_value"),
+            credited_cgst=Sum("cgst_amount"),
+            credited_sgst=Sum("sgst_amount"),
+            credited_igst=Sum("igst_amount"),
+        )
+    )
+
+    previous_credits = {
+        row["invoice_line_id"]: row
+        for row in previous_credit_rows
+    }
+
+    previous_header_total = (
+        invoice.credit_notes.aggregate(
+            total=Sum("grand_total")
+        )["total"] or zero
+    )
+
+    # --------------------------------------------------
+    # 7. Calculate credit-note lines from invoice snapshots
+    # --------------------------------------------------
+
+    line_data = []
+
+    taxable_total = zero
+    cgst_total = zero
+    sgst_total = zero
+    igst_total = zero
+
+    for invoice_line in invoice_lines:
+
+        requested_quantity = requested_quantities[
+            invoice_line.pk
+        ]
+
+        previous = previous_credits.get(
+            invoice_line.pk,
+            {}
+        )
+
+        already_credited_quantity = (
+            previous.get("credited_quantity") or 0
+        )
+
+        already_credited_taxable = (
+            previous.get("credited_taxable") or zero
+        )
+
+        already_credited_cgst = (
+            previous.get("credited_cgst") or zero
+        )
+
+        already_credited_sgst = (
+            previous.get("credited_sgst") or zero
+        )
+
+        already_credited_igst = (
+            previous.get("credited_igst") or zero
+        )
+
+        cumulative_quantity = (
+            already_credited_quantity + requested_quantity
+        )
+
+        if cumulative_quantity > invoice_line.quantity:
+            remaining = (
+                invoice_line.quantity
+                - already_credited_quantity
+            )
+
+            raise ValidationError(
+                f"Credit quantity exceeds the remaining quantity "
+                f"for {invoice_line.product_name}. "
+                f"Remaining quantity: {remaining}."
+            )
+
+        # Use the exact original line taxable value when fully credited.
+        if cumulative_quantity == invoice_line.quantity:
+            cumulative_taxable = invoice_line.taxable_value
+        else:
+            cumulative_taxable = money(
+                invoice_line.unit_price * cumulative_quantity
+            )
+
+        current_taxable = (
+            cumulative_taxable - already_credited_taxable
+        )
+
+        if current_taxable < zero:
+            raise ValidationError(
+                "Credit-note taxable value cannot be negative."
+            )
+
+        # Calculate cumulative GST, then deduct GST already credited.
+        cumulative_tax = money(
+            cumulative_taxable
+            * invoice_line.gst_rate
+            / Decimal("100")
+        )
+
+        if invoice_line.igst_amount > zero:
+
+            current_cgst = zero
+            current_sgst = zero
+
+            current_igst = (
+                cumulative_tax - already_credited_igst
+            )
+
+        else:
+
+            cumulative_cgst = money(
+                cumulative_tax / Decimal("2")
+            )
+
+            cumulative_sgst = (
+                cumulative_tax - cumulative_cgst
+            )
+
+            current_cgst = (
+                cumulative_cgst - already_credited_cgst
+            )
+
+            current_sgst = (
+                cumulative_sgst - already_credited_sgst
+            )
+
+            current_igst = zero
+
+        if min(
+            current_cgst,
+            current_sgst,
+            current_igst
+        ) < zero:
+            raise ValidationError(
+                "Calculated GST credit cannot be negative."
+            )
+
+        line_total = (
+            current_taxable
+            + current_cgst
+            + current_sgst
+            + current_igst
+        )
+
+        line_data.append({
+            "invoice_line": invoice_line,
+            "product_name": invoice_line.product_name,
+            "hsn_code": invoice_line.hsn_code,
+            "quantity": requested_quantity,
+            "unit_price": invoice_line.unit_price,
+            "gst_rate": invoice_line.gst_rate,
+            "taxable_value": current_taxable,
+            "cgst_amount": current_cgst,
+            "sgst_amount": current_sgst,
+            "igst_amount": current_igst,
+            "total_amount": line_total,
+        })
+
+        taxable_total += current_taxable
+        cgst_total += current_cgst
+        sgst_total += current_sgst
+        igst_total += current_igst
+
+    grand_total = (
+        taxable_total
+        + cgst_total
+        + sgst_total
+        + igst_total
+    )
+
+    if grand_total <= zero:
+        raise ValidationError(
+            "The credit note must have a positive total value."
+        )
+
+    if previous_header_total + grand_total > invoice.grand_total:
+        raise ValidationError(
+            "Total credit notes cannot exceed the original invoice value."
+        )
+
+    # --------------------------------------------------
+    # 8. Generate a financial-year credit-note number
+    # --------------------------------------------------
+
+    financial_year = get_financial_year(credit_note_date)
+
+    sequence, created = CreditNoteSequence.objects.get_or_create(
+        financial_year=financial_year,
+        defaults={"last_number": 0},
+    )
+
+    sequence = CreditNoteSequence.objects.select_for_update().get(
+        pk=sequence.pk
+    )
+
+    sequence.last_number += 1
+
+    sequence.save(
+        update_fields=["last_number"]
+    )
+
+    credit_note_number = (
+        f"CN/{financial_year}/{sequence.last_number:04d}"
+    )
+
+    # --------------------------------------------------
+    # 9. Create credit-note header
+    # --------------------------------------------------
+
+    credit_note = CreditNote.objects.create(
+        credit_note_number=credit_note_number,
+        invoice=invoice,
+        credit_note_date=credit_note_date,
+        reason=reason,
+        taxable_value=taxable_total,
+        cgst_total=cgst_total,
+        sgst_total=sgst_total,
+        igst_total=igst_total,
+        grand_total=grand_total,
+        created_by=user,
+    )
+
+    # --------------------------------------------------
+    # 10. Create immutable line snapshots
+    # --------------------------------------------------
+
+    CreditNoteLine.objects.bulk_create([
+        CreditNoteLine(
+            credit_note=credit_note,
+            invoice_line=item["invoice_line"],
+            product_name=item["product_name"],
+            hsn_code=item["hsn_code"],
+            quantity=item["quantity"],
+            unit_price=item["unit_price"],
+            gst_rate=item["gst_rate"],
+            taxable_value=item["taxable_value"],
+            cgst_amount=item["cgst_amount"],
+            sgst_amount=item["sgst_amount"],
+            igst_amount=item["igst_amount"],
+            total_amount=item["total_amount"],
+        )
+        for item in line_data
+    ])
+
+    return credit_note
 
 @transaction.atomic
 def record_payment(

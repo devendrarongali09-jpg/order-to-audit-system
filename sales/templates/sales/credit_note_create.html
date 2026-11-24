@@ -1,0 +1,238 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue Credit Note</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f7f9;color:#263640;margin:0;padding:22px}
+main{max-width:1100px;margin:auto}
+.panel{background:white;padding:20px;margin:16px 0;border:1px solid #dce4e9;border-radius:10px}
+h1,h2{color:#24485c}
+label{display:block;margin:10px 0 5px;font-size:14px}
+input,textarea{box-sizing:border-box;padding:9px;border:1px solid #bdc9d0;border-radius:5px;max-width:100%}
+textarea{width:100%;min-height:75px}
+table{width:100%;border-collapse:collapse;min-width:850px}
+th,td{padding:10px;border-bottom:1px solid #e5ebef;text-align:left;font-size:13px}
+th{background:#315b73;color:white}
+.wrap{overflow-x:auto}
+.numeric{text-align:right;white-space:nowrap}
+.qty{width:85px}
+button,.action{background:#315b73;color:white;border:0;border-radius:5px;padding:11px 16px;text-decoration:none;cursor:pointer}
+.secondary{background:#e8eef2;color:#24485c}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.summary div{padding:13px;background:#f3f6f8;border-radius:7px}
+.summary strong{display:block;margin-top:7px}
+.message{padding:10px;background:#fbeeee;margin:8px 0;border-radius:5px}
+.help{color:#667781;font-size:13px}
+@media(max-width:600px){body{padding:10px}.panel{padding:12px}}
+</style>
+</head>
+<body>
+<main>
+<h1>Issue Credit Note</h1>
+
+{% if messages %}
+{% for message in messages %}
+<div class="message">{{ message }}</div>
+{% endfor %}
+{% endif %}
+
+<section class="panel">
+<h2>Original invoice</h2>
+<p><strong>Invoice:</strong> {{ invoice.invoice_number }}</p>
+<p><strong>Customer:</strong> {{ invoice.customer_name }}</p>
+<p><strong>Invoice date:</strong> {{ invoice.invoice_date|date:"d-m-Y" }}</p>
+<p><strong>Original invoice value:</strong> ₹{{ invoice.grand_total|floatformat:2 }}</p>
+<p><strong>Previously credited:</strong> ₹{{ invoice.amount_credited|floatformat:2 }}</p>
+<p><strong>Remaining invoice value:</strong> ₹{{ invoice.net_total|floatformat:2 }}</p>
+</section>
+
+<form method="post">
+{% csrf_token %}
+
+<section class="panel">
+<h2>Credit-note details</h2>
+<label for="credit_note_date">Credit-note date</label>
+<input id="credit_note_date" name="credit_note_date" type="date" required value="{{ credit_note_date }}">
+
+<label for="reason">Reason for credit</label>
+<textarea id="reason" name="reason" required>{{ reason }}</textarea>
+</section>
+
+<section class="panel">
+<h2>Select returned quantities</h2>
+<p class="help">Enter zero for products that are not being credited. The maximum is the remaining uncredited invoice quantity.</p>
+
+<div class="wrap">
+<table>
+<thead>
+<tr>
+<th>Product</th>
+<th>HSN</th>
+<th class="numeric">Unit price</th>
+<th class="numeric">GST %</th>
+<th class="numeric">Original qty</th>
+<th class="numeric">Previously credited</th>
+<th class="numeric">Remaining</th>
+<th>Return qty</th>
+<th class="numeric">Credit value</th>
+</tr>
+</thead>
+<tbody>
+{% for row in rows %}
+<tr class="credit-row"
+data-original-quantity="{{ row.line.quantity }}"
+data-unit-price="{{ row.line.unit_price }}"
+data-original-taxable="{{ row.line.taxable_value }}"
+data-gst-rate="{{ row.line.gst_rate }}"
+data-previous-quantity="{{ row.credited_quantity }}"
+data-previous-taxable="{{ row.credited_taxable }}"
+data-previous-cgst="{{ row.credited_cgst }}"
+data-previous-sgst="{{ row.credited_sgst }}"
+data-previous-igst="{{ row.credited_igst }}"
+data-is-igst="{{ row.is_igst|yesno:'true,false' }}">
+<td>{{ row.line.product_name }}</td>
+<td>{{ row.line.hsn_code|default:"—" }}</td>
+<td class="numeric">₹{{ row.line.unit_price|floatformat:2 }}</td>
+<td class="numeric">{{ row.line.gst_rate }}%</td>
+<td class="numeric">{{ row.line.quantity }}</td>
+<td class="numeric">{{ row.credited_quantity }}</td>
+<td class="numeric">{{ row.remaining_quantity }}</td>
+<td>
+<input type="hidden" name="invoice_line_id" value="{{ row.line.pk }}">
+<input class="qty quantity-input" type="number" name="quantity"
+min="0" max="{{ row.remaining_quantity }}" step="1"
+value="{{ row.selected_quantity }}">
+</td>
+<td class="numeric">₹<span class="line-total">0.00</span></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="panel">
+<h2>Estimated GST credit preview</h2>
+<div class="summary">
+<div>Taxable value<strong>₹<span id="preview-taxable">0.00</span></strong></div>
+<div>CGST<strong>₹<span id="preview-cgst">0.00</span></strong></div>
+<div>SGST<strong>₹<span id="preview-sgst">0.00</span></strong></div>
+<div>IGST<strong>₹<span id="preview-igst">0.00</span></strong></div>
+<div>Credit-note total<strong>₹<span id="preview-total">0.00</span></strong></div>
+</div>
+<p class="help">Preview is an estimate. The issuing service performs the final decimal calculations and validates all quantities and totals.</p>
+</section>
+
+<button type="submit">Issue credit note</button>
+<a class="action secondary" href="{% url 'sales:credit_note_list' %}">Cancel</a>
+</form>
+
+</main>
+
+<script>
+(function () {
+    const rows = document.querySelectorAll(".credit-row");
+    const zero = () => 0;
+    const roundMoney = value => Math.round((value + Number.EPSILON) * 100) / 100;
+    const formatMoney = value => value.toFixed(2);
+
+    function updatePreview() {
+        let taxableTotal = zero();
+        let cgstTotal = zero();
+        let sgstTotal = zero();
+        let igstTotal = zero();
+        let invalid = false;
+
+        rows.forEach(row => {
+            const input = row.querySelector(".quantity-input");
+            const qty = Number.parseInt(input.value || "0", 10);
+
+            const originalQty = Number(row.dataset.originalQuantity);
+            const unitPrice = Number(row.dataset.unitPrice);
+            const originalTaxable = Number(row.dataset.originalTaxable);
+            const gstRate = Number(row.dataset.gstRate);
+
+            const previousQty = Number(row.dataset.previousQuantity);
+            const previousTaxable = Number(row.dataset.previousTaxable);
+            const previousCgst = Number(row.dataset.previousCgst);
+            const previousSgst = Number(row.dataset.previousSgst);
+            const previousIgst = Number(row.dataset.previousIgst);
+            const isIgst = row.dataset.isIgst === "true";
+
+            let lineTaxable = 0;
+            let lineCgst = 0;
+            let lineSgst = 0;
+            let lineIgst = 0;
+
+            if (!Number.isInteger(qty) || qty < 0 ||
+                qty > originalQty - previousQty) {
+                invalid = true;
+                row.querySelector(".line-total").textContent = "Invalid";
+                return;
+            }
+
+            if (qty > 0) {
+                const cumulativeQty = previousQty + qty;
+
+                const cumulativeTaxable =
+                    cumulativeQty === originalQty
+                    ? originalTaxable
+                    : roundMoney(unitPrice * cumulativeQty);
+
+                lineTaxable = roundMoney(
+                    cumulativeTaxable - previousTaxable
+                );
+
+                const cumulativeTax = roundMoney(
+                    cumulativeTaxable * gstRate / 100
+                );
+
+                if (isIgst) {
+                    lineIgst = roundMoney(cumulativeTax - previousIgst);
+                } else {
+                    const cumulativeCgst = roundMoney(cumulativeTax / 2);
+                    const cumulativeSgst = roundMoney(
+                        cumulativeTax - cumulativeCgst
+                    );
+
+                    lineCgst = roundMoney(cumulativeCgst - previousCgst);
+                    lineSgst = roundMoney(cumulativeSgst - previousSgst);
+                }
+            }
+
+            if ([lineTaxable, lineCgst, lineSgst, lineIgst].some(v => v < 0)) {
+                invalid = true;
+                row.querySelector(".line-total").textContent = "Invalid";
+                return;
+            }
+
+            const lineTotal = lineTaxable + lineCgst + lineSgst + lineIgst;
+            row.querySelector(".line-total").textContent = formatMoney(lineTotal);
+
+            taxableTotal += lineTaxable;
+            cgstTotal += lineCgst;
+            sgstTotal += lineSgst;
+            igstTotal += lineIgst;
+        });
+
+        const total = taxableTotal + cgstTotal + sgstTotal + igstTotal;
+
+        document.getElementById("preview-taxable").textContent = formatMoney(taxableTotal);
+        document.getElementById("preview-cgst").textContent = formatMoney(cgstTotal);
+        document.getElementById("preview-sgst").textContent = formatMoney(sgstTotal);
+        document.getElementById("preview-igst").textContent = formatMoney(igstTotal);
+        document.getElementById("preview-total").textContent =
+            invalid ? "Check quantities" : formatMoney(total);
+    }
+
+    rows.forEach(row => {
+        row.querySelector(".quantity-input").addEventListener("input", updatePreview);
+    });
+
+    updatePreview();
+})();
+</script>
+</body>
+</html>

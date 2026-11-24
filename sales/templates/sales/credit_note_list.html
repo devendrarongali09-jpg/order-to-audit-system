@@ -1,0 +1,105 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit Notes</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f7f9;color:#263640;margin:0;padding:24px}
+main{max-width:1100px;margin:auto}
+.panel{background:white;padding:20px;margin:18px 0;border:1px solid #dce4e9;border-radius:10px}
+h1,h2{color:#24485c}
+table{width:100%;border-collapse:collapse;min-width:750px}
+th,td{padding:11px;border-bottom:1px solid #e5ebef;text-align:left;font-size:14px}
+th{background:#315b73;color:white}
+.wrap{overflow-x:auto}
+a{color:#245b78}
+.action{display:inline-block;background:#315b73;color:white;padding:9px 13px;border-radius:5px;text-decoration:none}
+.message{padding:10px;background:#eaf0f3;margin:8px 0;border-radius:5px}
+@media(max-width:600px){body{padding:10px}.panel{padding:12px}}
+</style>
+</head>
+<body>
+<main>
+<h1>Credit Notes</h1>
+
+{% if messages %}
+{% for message in messages %}
+<div class="message">{{ message }}</div>
+{% endfor %}
+{% endif %}
+
+{% if can_issue %}
+<section class="panel">
+<h2>Issued invoices available for credit</h2>
+<div class="wrap">
+<table>
+<thead>
+<tr>
+<th>Invoice</th>
+<th>Customer</th>
+<th>Date</th>
+<th>Original total</th>
+<th>Credited</th>
+<th>Net total</th>
+<th>Outstanding</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+{% for invoice in invoices %}
+<tr>
+<td>{{ invoice.invoice_number }}</td>
+<td>{{ invoice.customer_name }}</td>
+<td>{{ invoice.invoice_date|date:"d-m-Y" }}</td>
+<td>₹{{ invoice.grand_total|floatformat:2 }}</td>
+<td>₹{{ invoice.amount_credited|floatformat:2 }}</td>
+<td>₹{{ invoice.net_total|floatformat:2 }}</td>
+<td>₹{{ invoice.balance_due|floatformat:2 }}</td>
+<td><a class="action" href="{% url 'sales:credit_note_create' invoice.pk %}">Issue credit</a></td>
+</tr>
+{% empty %}
+<tr><td colspan="8">No issued invoices found.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</section>
+{% endif %}
+
+<section class="panel">
+<h2>Issued credit-note register</h2>
+<div class="wrap">
+<table>
+<thead>
+<tr>
+<th>Credit-note number</th>
+<th>Invoice</th>
+<th>Customer</th>
+<th>Date</th>
+<th>Amount</th>
+<th>Created by</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+{% for credit in credit_notes %}
+<tr>
+<td>{{ credit.credit_note_number }}</td>
+<td>{{ credit.invoice.invoice_number }}</td>
+<td>{{ credit.invoice.customer_name }}</td>
+<td>{{ credit.credit_note_date|date:"d-m-Y" }}</td>
+<td>₹{{ credit.grand_total|floatformat:2 }}</td>
+<td>{{ credit.created_by }}</td>
+<td><a href="{% url 'sales:credit_note_detail' credit.pk %}">View</a></td>
+</tr>
+{% empty %}
+<tr><td colspan="7">No credit notes have been issued.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</section>
+</main>
+</body>
+</html>

@@ -1,0 +1,73 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit Note {{ credit_note.credit_note_number }}</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f7f9;color:#263640;padding:22px}
+main{max-width:1000px;margin:auto}
+.panel{background:white;border:1px solid #dce4e9;border-radius:10px;padding:20px;margin:16px 0}
+h1,h2{color:#24485c}
+table{width:100%;border-collapse:collapse;min-width:700px}
+th,td{padding:10px;border-bottom:1px solid #e5ebef;text-align:left}
+th{background:#315b73;color:white}
+.wrap{overflow-x:auto}
+a{color:#245b78}
+</style>
+</head>
+<body>
+<main>
+<h1>Credit Note {{ credit_note.credit_note_number }}</h1>
+
+<section class="panel">
+<p><strong>Original invoice:</strong> {{ credit_note.invoice.invoice_number }}</p>
+<p><strong>Customer:</strong> {{ credit_note.invoice.customer_name }}</p>
+<p><strong>Credit-note date:</strong> {{ credit_note.credit_note_date|date:"d-m-Y" }}</p>
+<p><strong>Reason:</strong> {{ credit_note.reason }}</p>
+<p><strong>Created by:</strong> {{ credit_note.created_by }}</p>
+</section>
+
+<section class="panel">
+<h2>Credited items</h2>
+<div class="wrap">
+<table>
+<thead>
+<tr>
+<th>Product</th><th>HSN</th><th>Quantity</th><th>Unit price</th>
+<th>GST rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th>
+</tr>
+</thead>
+<tbody>
+{% for line in credit_note.lines.all %}
+<tr>
+<td>{{ line.product_name }}</td>
+<td>{{ line.hsn_code }}</td>
+<td>{{ line.quantity }}</td>
+<td>₹{{ line.unit_price|floatformat:2 }}</td>
+<td>{{ line.gst_rate }}%</td>
+<td>₹{{ line.taxable_value|floatformat:2 }}</td>
+<td>₹{{ line.cgst_amount|floatformat:2 }}</td>
+<td>₹{{ line.sgst_amount|floatformat:2 }}</td>
+<td>₹{{ line.igst_amount|floatformat:2 }}</td>
+<td>₹{{ line.total_amount|floatformat:2 }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="panel">
+<h2>Credit-note totals</h2>
+<p>Taxable value: ₹{{ credit_note.taxable_value|floatformat:2 }}</p>
+<p>CGST: ₹{{ credit_note.cgst_total|floatformat:2 }}</p>
+<p>SGST: ₹{{ credit_note.sgst_total|floatformat:2 }}</p>
+<p>IGST: ₹{{ credit_note.igst_total|floatformat:2 }}</p>
+<h2>Total credit: ₹{{ credit_note.grand_total|floatformat:2 }}</h2>
+</section>
+
+<p><a href="{% url 'sales:credit_note_list' %}">Back to credit-note register</a></p>
+</main>
+</body>
+</html>

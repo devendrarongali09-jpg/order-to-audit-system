@@ -13,6 +13,8 @@ from .models import (
     Invoice,
     InvoiceLine,
     InvoiceSequence,
+    CreditNote,
+    CreditNoteLine,
     Payment,
     Dispatch,
     DispatchItem,
@@ -446,7 +448,87 @@ class InvoiceAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+class CreditNoteLineInline(admin.TabularInline):
+    model = CreditNoteLine
+    extra = 0
+    can_delete = False
 
+    fields = (
+        "invoice_line",
+        "product_name",
+        "hsn_code",
+        "quantity",
+        "unit_price",
+        "gst_rate",
+        "taxable_value",
+        "cgst_amount",
+        "sgst_amount",
+        "igst_amount",
+        "total_amount",
+    )
+
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return True
+
+
+@admin.register(CreditNote)
+class CreditNoteAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "credit_note_number",
+        "invoice",
+        "credit_note_date",
+        "taxable_value",
+        "grand_total",
+        "created_by",
+    )
+
+    list_filter = (
+        "credit_note_date",
+    )
+
+    search_fields = (
+        "credit_note_number",
+        "invoice__invoice_number",
+        "invoice__customer_name",
+    )
+
+    fields = (
+        "credit_note_number",
+        "invoice",
+        "credit_note_date",
+        "reason",
+        "taxable_value",
+        "cgst_total",
+        "sgst_total",
+        "igst_total",
+        "grand_total",
+        "created_by",
+        "created_at",
+    )
+
+    readonly_fields = fields
+    inlines = [CreditNoteLineInline]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return self.has_view_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 class PaymentAdminForm(forms.ModelForm):
