@@ -368,7 +368,50 @@ class InvoiceLine(models.Model):
 
     def __str__(self):
         return f"{self.product_name} - {self.quantity}"
+class InvoiceAuditLog(models.Model):
 
+    class Action(models.TextChoices):
+        ISSUED = "issued", "Issued"
+        CANCELLED = "cancelled", "Cancelled"
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.PROTECT,
+        related_name="audit_logs",
+    )
+
+    action = models.CharField(
+        max_length=12,
+        choices=Action.choices,
+    )
+
+    previous_values = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    new_values = models.JSONField(
+        default=dict,
+    )
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="invoice_audit_events",
+    )
+
+    changed_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["-changed_at", "-id"]
+
+    def __str__(self):
+        return (
+            f"{self.invoice.invoice_number} - "
+            f"{self.get_action_display()}"
+        )
 
 class CreditNoteSequence(models.Model):
 

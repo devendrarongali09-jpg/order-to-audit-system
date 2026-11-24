@@ -13,6 +13,7 @@ from .models import (
     Invoice,
     InvoiceLine,
     InvoiceSequence,
+    InvoiceAuditLog,
     CreditNote,
     CreditNoteLine,
     Payment,
@@ -379,6 +380,47 @@ class InvoiceLineInline(admin.TabularInline):
         "total_amount",
     )
 
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return True
+class InvoiceAuditLogInline(admin.TabularInline):
+    model = InvoiceAuditLog
+    extra = 0
+    can_delete = False
+    ordering = ("-changed_at",)
+
+    fields = (
+        "action",
+        "changed_by",
+        "changed_at",
+        "previous_values",
+        "new_values",
+    )
+
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser or request.user.has_perm(
+            "sales.view_invoiceauditlog"
+        )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_change_permission(request, obj)
+
 
 
 @admin.register(Invoice)
@@ -422,12 +464,16 @@ class InvoiceAdmin(admin.ModelAdmin):
         "igst_total",
         "grand_total",
         "status",
+        "cancellation_reason",
         "issued_by",
         "issued_at",
         "cancelled_at",
     )
 
-    inlines = [InvoiceLineInline]
+    inlines = [
+    InvoiceLineInline,
+    InvoiceAuditLogInline,
+]
 
     @admin.display(description="Download PDF")
     def pdf_download(self, obj):
@@ -447,7 +493,63 @@ class InvoiceAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+    def has_change_permission(self, request, obj=None):
+        return False
 
+    def has_view_permission(self, request, obj=None):
+       allowed_groups = [
+        "Owner",
+        "Factory Admin",
+        "Accountant/Auditor",
+    ]
+
+       return (
+        request.user.is_superuser
+        or request.user.groups.filter(
+            name__in=allowed_groups
+        ).exists()
+    )
+
+    def has_module_permission(self, request):
+       return self.has_view_permission(request)
+@admin.register(InvoiceAuditLog)
+class InvoiceAuditLogAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "invoice",
+        "action",
+        "changed_by",
+        "changed_at",
+    )
+
+    list_filter = (
+        "action",
+        "changed_at",
+    )
+
+    search_fields = (
+        "invoice__invoice_number",
+        "invoice__customer_name",
+        "changed_by__username",
+    )
+
+    readonly_fields = (
+        "invoice",
+        "action",
+        "previous_values",
+        "new_values",
+        "changed_by",
+        "changed_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 class CreditNoteLineInline(admin.TabularInline):
     model = CreditNoteLine
     extra = 0

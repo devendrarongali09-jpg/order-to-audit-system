@@ -16,6 +16,7 @@ from .models import (
     InvoiceSequence,
     Invoice,
     InvoiceLine,
+    InvoiceAuditLog,
     CreditNoteSequence,
     CreditNote,
     CreditNoteLine,
@@ -193,7 +194,50 @@ def money(value):
         CENT,
         rounding=ROUND_HALF_UP
     )
+def invoice_audit_snapshot(invoice):
+    """Return a JSON-serializable snapshot of an invoice and its lines."""
 
+    lines = []
+
+    for line in invoice.lines.all().order_by("pk"):
+        lines.append({
+            "line_id": line.pk,
+            "product_id": line.product_id,
+            "product_name": line.product_name,
+            "hsn_code": line.hsn_code,
+            "quantity": line.quantity,
+            "unit_price": str(line.unit_price),
+            "gst_rate": str(line.gst_rate),
+            "taxable_value": str(line.taxable_value),
+            "cgst_amount": str(line.cgst_amount),
+            "sgst_amount": str(line.sgst_amount),
+            "igst_amount": str(line.igst_amount),
+            "total_amount": str(line.total_amount),
+        })
+
+    return {
+        "invoice_number": invoice.invoice_number,
+        "order_id": invoice.order_id,
+        "invoice_date": invoice.invoice_date.isoformat(),
+        "status": invoice.status,
+        "seller_name": invoice.seller_name,
+        "seller_gstin": invoice.seller_gstin,
+        "seller_state_code": invoice.seller_state_code,
+        "customer_name": invoice.customer_name,
+        "customer_gstin": invoice.customer_gstin,
+        "place_of_supply": invoice.place_of_supply,
+        "place_of_supply_state_code": invoice.place_of_supply_state_code,
+        "taxable_value": str(invoice.taxable_value),
+        "cgst_total": str(invoice.cgst_total),
+        "sgst_total": str(invoice.sgst_total),
+        "igst_total": str(invoice.igst_total),
+        "grand_total": str(invoice.grand_total),
+        "cancellation_reason": invoice.cancellation_reason,
+        "issued_by_id": invoice.issued_by_id,
+        "issued_at": invoice.issued_at.isoformat() if invoice.issued_at else None,
+        "cancelled_at": invoice.cancelled_at.isoformat() if invoice.cancelled_at else None,
+        "lines": lines,
+    }
 
 @transaction.atomic
 def generate_invoice(
@@ -358,6 +402,14 @@ def generate_invoice(
         )
         for line in line_data
     ])
+   
+    InvoiceAuditLog.objects.create(
+        invoice=invoice,
+        action=InvoiceAuditLog.Action.ISSUED,
+        previous_values={},
+        new_values=invoice_audit_snapshot(invoice),
+        changed_by=user,
+    )
 
     order.status = SalesOrder.Status.INVOICED
 
@@ -528,6 +580,7 @@ def issue_credit_note(
             credited_sgst=Sum("sgst_amount"),
             credited_igst=Sum("igst_amount"),
         )
+        
     )
 
     previous_credits = {
@@ -767,6 +820,41 @@ def issue_credit_note(
         )
         for item in line_data
     ])
+
+    # Step 11: Cancel invoice only when fully credited
+
+    cumulative_credited = previous_header_total + grand_total
+
+    if cumulative_credited == invoice.grand_total:
+
+        # Capture invoice before cancellation.
+        previous_snapshot = invoice_audit_snapshot(invoice)
+
+        # Update invoice status.
+        invoice.status = Invoice.Status.CANCELLED
+
+        invoice.cancellation_reason = (
+            f"Fully credited by {credit_note_number}: {reason}"
+        )
+
+        invoice.cancelled_at = timezone.now()
+
+        invoice.save(
+            update_fields=[
+                "status",
+                "cancellation_reason",
+                "cancelled_at",
+            ]
+        )
+
+        # Record cancellation in the audit log.
+        InvoiceAuditLog.objects.create(
+            invoice=invoice,
+            action=InvoiceAuditLog.Action.CANCELLED,
+            previous_values=previous_snapshot,
+            new_values=invoice_audit_snapshot(invoice),
+            changed_by=user,
+        )
 
     return credit_note
 
