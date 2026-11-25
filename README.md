@@ -193,11 +193,10 @@ The commands below use Windows PowerShell. The application was developed and ver
 ### 1. Clone the repository
 
 ```powershell
-git clone <repository-url>
+git clone (https://github.com/devendrarongali09-jpg/order-to-audit-system.git)
 cd order-to-audit-system
 ```
 
-Replace `<repository-url>` with the public repository URL after pushing the project.
 
 ### 2. Create and activate a virtual environment
 
