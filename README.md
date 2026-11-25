@@ -197,7 +197,6 @@ git clone https://github.com/devendrarongali09-jpg/order-to-audit-system.git
 cd order-to-audit-system
 ```
 
-Replace `<repository-url>` with the public repository URL after pushing the project.
 
 ### 2. Create and activate a virtual environment
 
