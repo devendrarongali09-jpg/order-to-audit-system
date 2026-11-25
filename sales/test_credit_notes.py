@@ -1,4 +1,5 @@
-﻿from datetime import date
+﻿from datetime import date, timedelta
+from django.utils import timezone
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -316,7 +317,7 @@ class CreditNoteServiceTests(TestCase):
                         "quantity": 1,
                     }
                 ],
-                note_date=date(2026, 11, 25),
+                note_date=timezone.localdate() + timedelta(days=1),
             )
 
     def test_credit_note_date_before_invoice_is_rejected(self):
