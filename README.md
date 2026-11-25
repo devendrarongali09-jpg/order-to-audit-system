@@ -21,8 +21,8 @@ A Django and PostgreSQL application for managing a small food manufacturer's wor
 - [Reports and exports](#reports-and-exports)
 - [Tests and verification](#tests-and-verification)
 - [Known gaps and limitations](#known-gaps-and-limitations)
-- [Submission checklist](#submission-checklist)
 - [Security notes](#security-notes)
+- [Design Note](DESIGN_NOTE.md)
 
 ## Overview
 
@@ -193,7 +193,7 @@ The commands below use Windows PowerShell. The application was developed and ver
 ### 1. Clone the repository
 
 ```powershell
-git clone <repository-url>
+git clone https://github.com/devendrarongali09-jpg/order-to-audit-system.git
 cd order-to-audit-system
 ```
 
@@ -423,18 +423,6 @@ The latest complete local run reported **77 tests passing**. The test suite cove
 - Credit notes reduce receivables using their issue date in the ageing report. A fully credited invoice is marked cancelled. Existing payments are preserved; settlement of any resulting customer credit/refund requires an explicit business process.
 - The development database contains test/QA data as well as benchmark transactions. Use the benchmark rows and totals documented above rather than assuming every dashboard aggregate is benchmark-only.
 - The benchmark loader prepares/validates benchmark master/opening data; create or load transaction records separately when setting up a fresh demonstration database.
-
-## Submission checklist
-
-Before submitting the internship task, complete and verify these items:
-
-- [ ] Push the repository to a **public** GitHub or GitLab project and verify access without signing in.
-- [ ] Include the commit history and ensure `.env`, credentials, database dumps, and backups are not tracked.
-- [ ] Include a Design Note of no more than two pages (PDF or Markdown) with an ER diagram, stock/BOM calculation explanation, and costing/valuation method.
-- [ ] Record a demo video of no more than eight minutes showing the benchmark scenario in the specified order, including both the mobile salesman view and admin view.
-- [ ] Provide a local run command or hosted demo link.
-- [ ] Prepare separate test logins for all five roles; share credentials securely with the evaluator rather than publishing passwords in this repository.
-- [ ] Re-run migrations and the test suite from a clean database/environment before final submission.
 
 ## Security notes
 
