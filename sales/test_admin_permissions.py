@@ -7,7 +7,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import RequestFactory, TestCase
 
 from masterdata.models import Customer
-from sales.admin import SalesOrderAdmin
+from sales.admin import SalesOrderAdmin, SalesOrderItemInline
 from sales.models import SalesOrder
 
 
@@ -276,4 +276,48 @@ class SalesOrderAdminOwnershipTests(TestCase):
                 request,
                 self.other_order,
             )
+        )
+    def test_factory_admin_can_adjust_submitted_order_quantity_and_price(self):
+        request = self.make_request(self.factory_admin)
+        inline = SalesOrderItemInline(SalesOrder, AdminSite())
+
+        readonly_fields = inline.get_readonly_fields(
+            request,
+            self.submitted_order,
+        )
+
+        self.assertEqual(readonly_fields, ("product",))
+
+    def test_salesman_cannot_adjust_submitted_order_items(self):
+        request = self.make_request(self.salesman)
+        inline = SalesOrderItemInline(SalesOrder, AdminSite())
+
+        readonly_fields = inline.get_readonly_fields(
+            request,
+            self.submitted_order,
+        )
+
+        self.assertEqual(
+            readonly_fields,
+            ("product", "quantity", "unit_price"),
+        )
+
+    def test_factory_admin_cannot_adjust_invoiced_order_items(self):
+        request = self.make_request(self.factory_admin)
+        inline = SalesOrderItemInline(SalesOrder, AdminSite())
+
+        invoiced_order = self.create_order(
+            "SO-INVOICED-001",
+            self.salesman,
+            SalesOrder.Status.INVOICED,
+        )
+
+        readonly_fields = inline.get_readonly_fields(
+            request,
+            invoiced_order,
+        )
+
+        self.assertEqual(
+            readonly_fields,
+            ("product", "quantity", "unit_price"),
         )

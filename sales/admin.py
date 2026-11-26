@@ -48,9 +48,23 @@ class SalesOrderItemInline(admin.TabularInline):
         "unit_price",
     )
 
+    def can_adjust_submitted_order(self, request, obj):
+        if not obj or obj.status != SalesOrder.Status.SUBMITTED:
+            return False
+
+        return (
+            request.user.is_superuser
+            or request.user.groups.filter(
+                name__in=("Factory Admin", "Owner")
+            ).exists()
+        )
+
     def get_readonly_fields(self, request, obj=None):
 
         if obj and obj.status != SalesOrder.Status.DRAFT:
+            if self.can_adjust_submitted_order(request, obj):
+                return ("product",)
+
             return ("product", "quantity", "unit_price")
 
         return ()
@@ -68,7 +82,6 @@ class SalesOrderItemInline(admin.TabularInline):
             return False
 
         return super().has_delete_permission(request, obj)
-
 
 @admin.register(SalesOrder)
 class SalesOrderAdmin(admin.ModelAdmin):
@@ -99,6 +112,7 @@ class SalesOrderAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
         "submitted_at",
+        "stock_coverage_details",
         "approved_at",
         "approved_by",
         "rejection_reason",
