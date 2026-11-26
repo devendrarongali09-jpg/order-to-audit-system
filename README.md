@@ -2,7 +2,7 @@
 
 A Django and PostgreSQL application for managing a small food manufacturer's workflow—from field-sales orders and raw-material purchases through production, GST invoice generation, dispatch, collections, inventory, costing, and audit reporting.
 
-> **Development status:** The latest complete local test run reported **77 passing tests** and `python manage.py check` reported no issues. The application has been verified locally on Windows with PostgreSQL. A public production deployment and the final submission video are not yet included.
+> **Development status:** The latest complete local test run reported **80 passing tests** and `python manage.py check` reported no issues. The application has been verified locally on Windows with PostgreSQL. A public production deployment and the final submission video are not yet included.
 
 ## Contents
 
@@ -409,7 +409,7 @@ Run the complete test suite:
 python manage.py test
 ```
 
-The latest complete local run reported **77 tests passing**. The test suite covers invoice GST calculations and snapshots, payment reversal, production audit history, credit-note calculations and permissions, invoice audit events, and outstanding-ageing reports. Run tests again after making code or configuration changes.
+The latest complete local run reported **80 tests passing**. The test suite covers invoice GST calculations and snapshots, payment reversal, production audit history, credit-note calculations and permissions, invoice audit events, and outstanding-ageing reports. Run tests again after making code or configuration changes.
 
 ## Known gaps and limitations
 
