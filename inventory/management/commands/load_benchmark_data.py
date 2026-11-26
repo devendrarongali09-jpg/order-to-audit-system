@@ -132,6 +132,7 @@ class Command(BaseCommand):
             {
                 "name": "Retailer A",
                 "customer_type": Customer.CustomerType.RETAILER,
+                "gstin": "DEMO-RET-000001",
                 "city": "Chennai",
                 "state": "Tamil Nadu",
                 "state_code": "33",
@@ -139,6 +140,7 @@ class Command(BaseCommand):
             {
                 "name": "Distributor B",
                 "customer_type": Customer.CustomerType.DISTRIBUTOR,
+                "gstin": "DEMO-DIST-00001",
                 "city": "Bengaluru",
                 "state": "Karnataka",
                 "state_code": "29",
